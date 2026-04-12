@@ -18,17 +18,26 @@ the pipeline.
 
 Evidence level is always HEURISTIC_ESTIMATED because Tanimoto similarity on
 2D fingerprints is a structural heuristic, not a computed or measured property.
+
+The constructor accepts a path to a pre-built reference pickle (dict mapping
+inchikey -> ExplicitBitVect). The ``build_reference`` classmethod constructs
+and saves this pickle from pre-computed (smiles, inchikey, fingerprint)
+tuples — separating reference building from checking so the expensive
+fingerprint computation can happen once offline.
 """
 
 from __future__ import annotations
 
+import pickle  # nosec B403 — pickle is the standard serialization for RDKit fingerprint objects
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from rdkit.Chem import Mol
 from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
 from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
-from rdkit.DataStructs import BulkTanimotoSimilarity
+from rdkit.DataStructs import BulkTanimotoSimilarity, ExplicitBitVect
 
 from workbench.shared.evidence import EvidenceLevel
 
@@ -93,69 +102,73 @@ class NoveltyResult:
 
 
 class ChEMBLNoveltyChecker:
-    """Novelty checker against a reference set of known compounds.
+    """Novelty checker backed by a pickled reference fingerprint database.
 
-    Two-stage classification: exact InChIKey match first (dict lookup),
-    then Tanimoto fingerprint similarity. Exact match takes precedence
-    because it is cheaper and deterministic — same rationale as
-    DuplicateDetector.
+    The constructor loads a pre-built pickle file containing a
+    ``dict[str, ExplicitBitVect]`` mapping InChIKey to Morgan fingerprint.
+    This design separates reference-building (expensive, done once offline)
+    from checking (cheap, done per query).
+
+    The ``build_reference`` classmethod creates the pickle from pre-computed
+    data so callers do not need to know the internal format.
 
     Parameters
     ----------
+    reference_path:
+        Path to a pickle file containing ``dict[str, ExplicitBitVect]``.
     reference_db:
         Name tag for the reference database (default ``'ChEMBL_36'``).
+
+    Raises
+    ------
+    FileNotFoundError
+        If *reference_path* does not exist.
     """
 
-    def __init__(self, reference_db: str = "ChEMBL_36") -> None:
+    def __init__(
+        self, reference_path: str | Path, reference_db: str = "ChEMBL_36"
+    ) -> None:
+        reference_path = Path(reference_path)
+        if not reference_path.exists():
+            raise FileNotFoundError(
+                f"Reference file not found: {reference_path}"
+            )
+
+        with open(reference_path, "rb") as fh:
+            ref_dict: dict[str, ExplicitBitVect] = pickle.load(fh)  # nosec B301 — trusted internal reference file built by build_reference
+
         self._reference_db = reference_db
-        # InChIKey → InChIKey (identity map for fast lookup)
-        self._inchikey_index: dict[str, str] = {}
-        # list of (inchikey, fingerprint) for similarity scanning
-        self._fingerprints: list[tuple[str, object]] = []
+        self._inchikeys: frozenset[str] = frozenset(ref_dict.keys())
+        # Ordered list for index-based lookup after BulkTanimotoSimilarity
+        self._fingerprints: list[tuple[str, ExplicitBitVect]] = list(
+            ref_dict.items()
+        )
 
     @classmethod
     def build_reference(
         cls,
-        mols: list[Mol],
-        reference_db: str = "ChEMBL_36",
-    ) -> ChEMBLNoveltyChecker:
-        """Build a checker from a list of reference molecules.
+        smiles_inchikey_fps: Iterable[tuple[str, str, ExplicitBitVect]],
+        output_path: str | Path,
+    ) -> None:
+        """Build and save a reference pickle from pre-computed data.
 
         Parameters
         ----------
-        mols:
-            RDKit Mol objects representing known compounds.
-        reference_db:
-            Name tag for the reference database.
-
-        Returns
-        -------
-        ChEMBLNoveltyChecker
-            Ready-to-use checker with the reference set indexed.
-
-        Raises
-        ------
-        TypeError
-            If any element in *mols* is not an RDKit Mol.
+        smiles_inchikey_fps:
+            Iterable of ``(smiles, inchikey, fingerprint)`` tuples.
+            SMILES is included for provenance but not stored in the pickle —
+            the checker only needs InChIKey and fingerprint at query time.
+        output_path:
+            Where to write the pickle file.
         """
-        checker = cls(reference_db=reference_db)
-        for mol in mols:
-            if not isinstance(mol, Mol):
-                raise TypeError(
-                    f"Expected rdkit.Chem.Mol, got {type(mol).__name__}"
-                )
-            inchi_str = MolToInchi(mol)
-            inchikey = InchiToInchiKey(inchi_str) if inchi_str is not None else None
+        ref_dict: dict[str, ExplicitBitVect] = {}
+        for _smiles, inchikey, fp in smiles_inchikey_fps:
+            ref_dict.setdefault(inchikey, fp)
 
-            fp = GetMorganFingerprintAsBitVect(
-                mol, _MORGAN_RADIUS, nBits=_MORGAN_NBITS
-            )
-
-            if inchikey is not None:
-                self = checker
-                self._inchikey_index.setdefault(inchikey, inchikey)
-                self._fingerprints.append((inchikey, fp))
-        return checker
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "wb") as fh:
+            pickle.dump(ref_dict, fh, protocol=pickle.HIGHEST_PROTOCOL)
 
     def check(self, mol: Mol) -> NoveltyResult:
         """Classify a molecule's novelty against the reference set.
@@ -180,13 +193,13 @@ class ChEMBLNoveltyChecker:
                 f"Expected rdkit.Chem.Mol, got {type(mol).__name__}"
             )
 
-        # Stage 1: exact InChIKey match
+        # Stage 1: exact InChIKey match — cheaper than fingerprint scan
         inchi_str = MolToInchi(mol)
         query_inchikey = (
             InchiToInchiKey(inchi_str) if inchi_str is not None else None
         )
 
-        if query_inchikey is not None and query_inchikey in self._inchikey_index:
+        if query_inchikey is not None and query_inchikey in self._inchikeys:
             return NoveltyResult(
                 classification=NoveltyClass.EXACT_KNOWN,
                 max_tanimoto=1.0,
