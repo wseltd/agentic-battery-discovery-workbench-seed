@@ -76,20 +76,23 @@ def test_from_smiles_strips_salts():
 
 def test_from_smiles_invalid_smiles_raises():
     """Garbage SMILES raises ValueError with informative message."""
-    with pytest.raises(ValueError, match="Cannot parse SMILES"):
+    with pytest.raises(ValueError, match="Cannot parse SMILES") as exc_info:
         CanonicalMolecule.from_smiles("not_a_molecule!!!", evidence_level="generated")
+    assert "not_a_molecule" in str(exc_info.value)
 
 
 def test_from_smiles_empty_smiles_raises():
     """Empty string raises ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         CanonicalMolecule.from_smiles("", evidence_level="generated")
+    assert exc_info.value is not None
 
 
 def test_from_smiles_bad_evidence_level_raises():
     """Invalid evidence level string raises ValueError."""
-    with pytest.raises(ValueError, match="Unknown evidence level"):
+    with pytest.raises(ValueError, match="Unknown evidence level") as exc_info:
         CanonicalMolecule.from_smiles("C", evidence_level="bogus")
+    assert "bogus" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -99,12 +102,14 @@ def test_from_smiles_bad_evidence_level_raises():
 def test_immutability_after_construction():
     """Frozen dataclass prevents attribute assignment after construction."""
     mol = CanonicalMolecule.from_smiles("C", evidence_level="generated")
+    original_smiles = mol.canonical_smiles
     with pytest.raises(dataclasses.FrozenInstanceError):
         mol.canonical_smiles = "CC"  # type: ignore[misc]
     with pytest.raises(dataclasses.FrozenInstanceError):
         mol.inchikey = "FAKE"  # type: ignore[misc]
     with pytest.raises(dataclasses.FrozenInstanceError):
         mol.evidence_level = EvidenceLevel.DFT_VERIFIED  # type: ignore[misc]
+    assert mol.canonical_smiles == original_smiles
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +140,9 @@ def test_to_sdf_returns_string_with_terminator():
 def test_to_xyz_raises_without_conformer():
     """to_xyz raises ValueError when no conformer has been embedded."""
     mol = CanonicalMolecule.from_smiles("CCO", evidence_level="generated")
-    with pytest.raises(ValueError, match="No 3-D conformer"):
+    with pytest.raises(ValueError, match="No 3-D conformer") as exc_info:
         mol.to_xyz()
+    assert "embed_conformer" in str(exc_info.value)
 
 
 def test_embed_conformer_enables_xyz_export():
