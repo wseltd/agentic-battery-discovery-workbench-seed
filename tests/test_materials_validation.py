@@ -194,6 +194,7 @@ class TestForbiddenAtomicNumbers:
 
     def test_is_frozenset(self):
         assert isinstance(FORBIDDEN_ATOMIC_NUMBERS, frozenset)
+        assert 43 in FORBIDDEN_ATOMIC_NUMBERS  # Tc must be present
 
 
 # ---------------------------------------------------------------------------
