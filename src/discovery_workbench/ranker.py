@@ -9,15 +9,13 @@ Higher scores are better (maximisation on all objectives).
 
 from __future__ import annotations
 
-import logging
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
 from discovery_workbench.crowding import compute_crowding_distance
 from discovery_workbench.pareto import non_dominated_sort
-
-logger = logging.getLogger(__name__)
+from discovery_workbench.ranker_validation import validate_candidates
 
 
 # ---------------------------------------------------------------------------
@@ -117,31 +115,26 @@ def compute_pareto_ranking(
     UserWarning
         If any candidate has NaN scores — those candidates are dropped.
     """
+    if not weights:
+        raise ValueError("weights must not be empty — at least one objective is required")
+    if shortlist_size < 1:
+        raise ValueError(
+            f"shortlist_size must be >= 1, got {shortlist_size}"
+        )
+
     if not candidates:
         return RankingResult()
 
-    # Filter out candidates with NaN scores.
-    valid: list[dict[str, Any]] = []
-    for cand in candidates:
-        has_nan = False
-        for val in cand["scores"].values():
-            # NaN != NaN is the standard NaN check.
-            if val != val:  # noqa: PLR0124
-                has_nan = True
-                break
-        if has_nan:
-            warnings.warn(
-                f"Candidate {cand['candidate_id']!r} has NaN scores and was dropped",
-                UserWarning,
-                stacklevel=2,
-            )
-        else:
-            valid.append(cand)
+    objective_names = list(weights.keys())
+
+    # Delegate NaN / missing-key filtering to ranker_validation.
+    valid, validation_warnings = validate_candidates(candidates, objective_names)
+    for msg in validation_warnings:
+        warnings.warn(msg, UserWarning, stacklevel=2)
 
     if not valid:
         return RankingResult()
 
-    objective_names = list(weights.keys())
     fronts = non_dominated_sort(valid, objective_names)
 
     # Build (front_index, -crowding_distance, candidate) triples for
