@@ -120,6 +120,7 @@ class TestValidationResultFrozen:
         result = ValidationResult(is_valid=True, mol=None, errors=[])
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.mol = Chem.MolFromSmiles("C")
+        assert result.mol is None
 
     def test_cannot_set_errors(self):
         result = ValidationResult(is_valid=True, mol=None, errors=[])
