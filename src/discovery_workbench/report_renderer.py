@@ -7,6 +7,7 @@ for tamper detection.  No file I/O — pure data transformation.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from typing import Any
@@ -18,14 +19,46 @@ from discovery_workbench.report_constants import (
 )
 
 # Re-export so callers can import from this module.
-__all__ = ["render_report", "APPROVED_WORDING", "BANNED_WORDS"]
-from discovery_workbench.report_schema import Report
+__all__ = ["render_report", "inject_provenance", "APPROVED_WORDING", "BANNED_WORDS"]
+from discovery_workbench.report_schema import Report, ShortlistEntry
 
 # Caveat appended when banned words are detected in the user brief or warnings.
 _BANNED_WORD_CAVEAT = (
     "This report contains language that may overstate confidence in "
     "computational predictions. Review flagged terms carefully."
 )
+
+
+def inject_provenance(shortlist: list[ShortlistEntry]) -> list[dict]:
+    """Convert ShortlistEntry dataclasses to dicts with provenance notes.
+
+    Each entry is converted via ``dataclasses.asdict`` and augmented with
+    a ``provenance_note`` key whose value is the approved wording for the
+    entry's evidence level.
+
+    Parameters
+    ----------
+    shortlist:
+        List of ShortlistEntry dataclass instances.
+
+    Returns
+    -------
+    list[dict]
+        One dict per entry, with all dataclass fields plus ``provenance_note``.
+
+    Raises
+    ------
+    KeyError
+        If an entry's ``evidence_level`` has no approved wording in
+        ``APPROVED_WORDING``.
+    """
+    result: list[dict] = []
+    for entry in shortlist:
+        entry_dict = dataclasses.asdict(entry)
+        # Raise KeyError (not silently fall back) if wording is missing.
+        entry_dict["provenance_note"] = APPROVED_WORDING[entry.evidence_level]
+        result.append(entry_dict)
+    return result
 
 
 def render_report(report: Report) -> dict[str, Any]:
@@ -43,19 +76,7 @@ def render_report(report: Report) -> dict[str, Any]:
         shortlist (with provenance_note per entry), warnings, annexes,
         provenance (sha256_shortlist digest and caveat if applicable).
     """
-    shortlist_out: list[dict[str, Any]] = []
-    for entry in report.shortlist:
-        rendered_entry: dict[str, Any] = {
-            "candidate_id": entry.candidate_id,
-            "scores": entry.scores,
-            "evidence_level": entry.evidence_level,
-            "rank": entry.rank,
-            "provenance_note": APPROVED_WORDING.get(
-                entry.evidence_level,
-                APPROVED_WORDING["unknown"],
-            ),
-        }
-        shortlist_out.append(rendered_entry)
+    shortlist_out = inject_provenance(report.shortlist)
 
     # Deterministic digest: canonical JSON of the shortlist, sorted keys.
     shortlist_json = json.dumps(shortlist_out, sort_keys=True, separators=(",", ":"))
