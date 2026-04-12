@@ -23,6 +23,7 @@ from discovery_workbench.routing.keywords import (
     AMBIGUITY_KEYWORDS,
     classify_token,
 )
+from discovery_workbench.routing.tokeniser import tokenise
 
 
 @dataclass(frozen=True)
@@ -86,13 +87,9 @@ def route_deterministic(text: str) -> RoutingResult:
     RoutingResult
         Frozen verdict with matched keywords and domain assignment.
     """
-    lowered = text.lower()
-    words = lowered.split()
-
-    # Build unigrams + bigrams — covers all multi-word registry entries
-    tokens: set[str] = set(words)
-    for i in range(len(words) - 1):
-        tokens.add(f"{words[i]} {words[i + 1]}")
+    # Delegate tokenisation to the shared tokeniser (T006.b) — keeps
+    # splitting logic in one place instead of duplicating regex vs split.
+    tokens = tokenise(text)
 
     matched_keywords: set[str] = set()
     ambiguity_hits: set[str] = set()
