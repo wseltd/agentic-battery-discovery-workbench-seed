@@ -63,16 +63,19 @@ class TestEdgeCases:
         assert weight > 0.0
 
     def test_none_input_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_molecular_weight(None)
+        assert "NoneType" in str(exc_info.value)
 
     def test_string_input_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_molecular_weight("CCO")
+        assert "str" in str(exc_info.value)
 
     def test_int_input_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_molecular_weight(42)
+        assert "int" in str(exc_info.value)
 
     def test_weight_is_positive(self):
         """Any valid molecule must have positive weight."""
@@ -83,4 +86,7 @@ class TestEdgeCases:
     def test_return_type_is_float(self):
         mol = Chem.MolFromSmiles("C")
         assert mol is not None
-        assert isinstance(calc_molecular_weight(mol), float)
+        weight = calc_molecular_weight(mol)
+        assert isinstance(weight, float)
+        # Methane CH4 = 16.031
+        assert abs(weight - 16.031) < _MW_TOLERANCE
