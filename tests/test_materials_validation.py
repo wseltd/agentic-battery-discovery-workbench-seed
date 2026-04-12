@@ -1,4 +1,4 @@
-"""Tests for materials structure validation (parse + lattice sanity)."""
+"""Tests for materials structure validation (parse, lattice, elements, atom count)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import pytest
 from pymatgen.core import Lattice, Structure
 
 from agentic_discovery.materials.validation import (
+    FORBIDDEN_ATOMIC_NUMBERS,
     ValidationResult,
+    validate_allowed_elements,
+    validate_atom_count,
     validate_lattice_sanity,
     validate_structure_parseable,
 )
@@ -173,3 +176,128 @@ class TestLatticeSanity:
         result = validate_lattice_sanity(s)
         assert result.passed is False
         assert "determinant" in result.message.lower() or "non-positive" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# FORBIDDEN_ATOMIC_NUMBERS constant — 2 tests
+# ---------------------------------------------------------------------------
+
+class TestForbiddenAtomicNumbers:
+    def test_cardinality(self):
+        """The set should contain exactly the union of noble gases, Tc, Pm, and Z>=84."""
+        noble = {2, 10, 18, 36, 54, 86}
+        radioactive_orphans = {43, 61}
+        high_z = set(range(84, 119))
+        expected = noble | radioactive_orphans | high_z
+        assert FORBIDDEN_ATOMIC_NUMBERS == expected
+        assert len(FORBIDDEN_ATOMIC_NUMBERS) == 42
+
+    def test_is_frozenset(self):
+        assert isinstance(FORBIDDEN_ATOMIC_NUMBERS, frozenset)
+
+
+# ---------------------------------------------------------------------------
+# validate_allowed_elements — 6 tests (boundary correctness is critical)
+# ---------------------------------------------------------------------------
+
+def _simple_structure(*symbols: str) -> Structure:
+    """Build a minimal cubic structure from element symbols."""
+    coords = [[i * 0.2, 0.0, 0.0] for i in range(len(symbols))]
+    return Structure(Lattice.cubic(10.0), list(symbols), coords)
+
+
+class TestAllowedElements:
+    def test_elements_valid_common_elements(self):
+        """H, C, N, O, Fe, Bi (Z=83) are all allowed."""
+        s = _simple_structure("H", "C", "N", "O", "Fe", "Bi")
+        result = validate_allowed_elements(s)
+        assert result.passed is True
+        assert result.stage == "allowed_elements"
+        assert result.severity == "hard"
+
+    def test_elements_technetium_rejected(self):
+        """Tc (Z=43) has no stable isotopes — must be forbidden."""
+        s = _simple_structure("Tc")
+        result = validate_allowed_elements(s)
+        assert result.passed is False
+        assert "Tc" in result.message
+
+    def test_elements_promethium_rejected(self):
+        """Pm (Z=61) has no stable isotopes — must be forbidden."""
+        s = _simple_structure("Pm")
+        result = validate_allowed_elements(s)
+        assert result.passed is False
+        assert "Pm" in result.message
+
+    def test_elements_noble_gas_rejected(self):
+        """All six noble gases (He, Ne, Ar, Kr, Xe, Rn) must be forbidden."""
+        for sym in ("He", "Ne", "Ar", "Kr", "Xe", "Rn"):
+            s = _simple_structure(sym)
+            result = validate_allowed_elements(s)
+            assert result.passed is False, f"{sym} should be forbidden"
+            assert sym in result.message
+
+    def test_elements_z_above_83_rejected(self):
+        """Spot-check several elements with Z >= 84."""
+        for sym in ("Po", "At", "Ra", "Th", "U", "Pu", "Og"):
+            s = _simple_structure(sym)
+            result = validate_allowed_elements(s)
+            assert result.passed is False, f"{sym} should be forbidden"
+
+    def test_elements_boundary_z83_bismuth_allowed(self):
+        """Bi (Z=83) is the heaviest allowed element — boundary check."""
+        s = _simple_structure("Bi")
+        result = validate_allowed_elements(s)
+        assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
+# validate_atom_count — 6 tests
+# ---------------------------------------------------------------------------
+
+class TestAtomCount:
+    def test_atom_count_valid(self):
+        """Standard 2-atom Si cell passes."""
+        si = _cubic_si()
+        result = validate_atom_count(si)
+        assert result.passed is True
+        assert result.stage == "atom_count"
+        assert result.severity == "hard"
+
+    def test_atom_count_exactly_1_passes(self):
+        """A single-atom structure is within the allowed range."""
+        s = Structure(Lattice.cubic(4.0), ["Fe"], [[0, 0, 0]])
+        result = validate_atom_count(s)
+        assert result.passed is True
+
+    def test_atom_count_exactly_20_passes(self):
+        """20 atoms is the upper boundary — must pass."""
+        coords = [[i * 0.05, 0.0, 0.0] for i in range(20)]
+        s = Structure(Lattice.cubic(20.0), ["Si"] * 20, coords)
+        result = validate_atom_count(s)
+        assert result.passed is True
+
+    def test_atom_count_exceeds_20_fails(self):
+        """21 atoms exceeds the limit."""
+        coords = [[i * 0.045, 0.0, 0.0] for i in range(21)]
+        s = Structure(Lattice.cubic(20.0), ["Si"] * 21, coords)
+        result = validate_atom_count(s)
+        assert result.passed is False
+        assert "21" in result.message
+        assert result.stage == "atom_count"
+
+    def test_atom_count_large_structure_fails(self):
+        """50 atoms is well above the limit."""
+        coords = [[i * 0.02, 0.0, 0.0] for i in range(50)]
+        s = Structure(Lattice.cubic(30.0), ["C"] * 50, coords)
+        result = validate_atom_count(s)
+        assert result.passed is False
+        assert "50" in result.message
+
+    def test_atom_count_message_includes_maximum(self):
+        """Failure message should mention the maximum for actionable feedback."""
+        coords = [[i * 0.045, 0.0, 0.0] for i in range(25)]
+        s = Structure(Lattice.cubic(20.0), ["O"] * 25, coords)
+        result = validate_atom_count(s)
+        assert result.passed is False
+        assert "20" in result.message

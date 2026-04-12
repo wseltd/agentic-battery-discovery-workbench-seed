@@ -1,4 +1,4 @@
-"""Materials structure validation: parseability and lattice sanity checks."""
+"""Materials structure validation: parseability, lattice sanity, element, and atom-count checks."""
 
 from __future__ import annotations
 
@@ -16,6 +16,19 @@ _ALLOWED_SEVERITIES = frozenset({"hard", "soft"})
 # Minimum credible unit-cell volume in Å³ — anything below this
 # is numerically degenerate rather than physically meaningful.
 _MIN_LATTICE_VOLUME = 0.1
+
+# Maximum atom count for a single structure in the validation pipeline.
+_MAX_ATOM_COUNT = 20
+
+# Elements forbidden from generated inorganic structures.
+# Noble gases are chemically inert and rarely form stable crystalline compounds.
+# Tc (43) and Pm (61) have no stable isotopes — synthesising them is impractical.
+# All Z >= 84 are radioactive with short-lived or difficult-to-handle isotopes.
+FORBIDDEN_ATOMIC_NUMBERS: frozenset[int] = frozenset(
+    {2, 10, 18, 36, 54, 86}  # noble gases
+    | {43, 61}                 # Tc, Pm — no stable isotopes
+    | set(range(84, 119))      # Po through Og — all radioactive
+)
 
 
 @dataclass(frozen=True)
@@ -115,4 +128,73 @@ def validate_lattice_sanity(structure: Structure) -> ValidationResult:
 
     return ValidationResult(
         passed=True, stage="lattice_sanity", message="", severity="hard"
+    )
+
+
+def validate_allowed_elements(structure: Structure) -> ValidationResult:
+    """Reject structures containing forbidden elements.
+
+    Checks every site in *structure* against :data:`FORBIDDEN_ATOMIC_NUMBERS`.
+    Any match is a hard failure — the element cannot appear in a practical
+    inorganic-materials search.
+
+    Args:
+        structure: A pymatgen :class:`~pymatgen.core.Structure`.
+
+    Returns:
+        A :class:`ValidationResult` with ``stage='allowed_elements'``.
+    """
+    offending: set[str] = set()
+    for site in structure:
+        for species, _ in site.species.items():
+            if species.Z in FORBIDDEN_ATOMIC_NUMBERS:
+                offending.add(species.symbol)
+
+    if offending:
+        names = ", ".join(sorted(offending))
+        return ValidationResult(
+            passed=False,
+            stage="allowed_elements",
+            message=f"Forbidden element(s): {names}",
+            severity="hard",
+        )
+
+    return ValidationResult(
+        passed=True, stage="allowed_elements", message="", severity="hard"
+    )
+
+
+def validate_atom_count(structure: Structure) -> ValidationResult:
+    """Reject structures with zero atoms or more than the allowed maximum.
+
+    Structures must contain between 1 and :data:`_MAX_ATOM_COUNT` atoms
+    (inclusive).  Empty structures are physically meaningless; very large
+    cells are outside the scope of the fast-validation pipeline.
+
+    Args:
+        structure: A pymatgen :class:`~pymatgen.core.Structure`.
+
+    Returns:
+        A :class:`ValidationResult` with ``stage='atom_count'``.
+    """
+    n = len(structure)
+
+    if n == 0:
+        return ValidationResult(
+            passed=False,
+            stage="atom_count",
+            message="Structure has 0 atoms",
+            severity="hard",
+        )
+
+    if n > _MAX_ATOM_COUNT:
+        return ValidationResult(
+            passed=False,
+            stage="atom_count",
+            message=f"Structure has {n} atoms, exceeds maximum of {_MAX_ATOM_COUNT}",
+            severity="hard",
+        )
+
+    return ValidationResult(
+        passed=True, stage="atom_count", message="", severity="hard"
     )
