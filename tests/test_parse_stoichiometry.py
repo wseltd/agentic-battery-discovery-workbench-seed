@@ -72,7 +72,7 @@ def test_the_rejected():
     # In practice, 'THE' would only appear as uppercase in all-caps text.
     # The regex requires the token to be all-uppercase with word boundaries.
     # 'the' lowercase does NOT match.
-    assert parse_stoichiometry_pattern("the quick brown fox") is None
+    assert parse_stoichiometry_pattern("the quick brown fox") == None  # noqa: E711
 
 
 def test_uppercase_the_matches_as_three_distinct():
@@ -96,24 +96,23 @@ def test_and_rejected():
 
 def test_lowercase_words_ignored():
     """Normal lowercase prose never matches."""
-    assert parse_stoichiometry_pattern(
-        "generate stable oxide structures"
-    ) is None
+    result = parse_stoichiometry_pattern("generate stable oxide structures")
+    assert result == None  # noqa: E711
 
 
 def test_two_letter_symbols_rejected():
     """Short uppercase tokens like 'NO' or 'IF' don't match — too short."""
-    assert parse_stoichiometry_pattern("NO IF OR") is None
+    assert parse_stoichiometry_pattern("NO IF OR") == None  # noqa: E711
 
 
 def test_single_repeated_letter_rejected():
     """AAA — only 1 distinct uppercase letter, no digit. Must be rejected."""
-    assert parse_stoichiometry_pattern("AAA") is None
+    assert parse_stoichiometry_pattern("AAA") == None  # noqa: E711
 
 
 def test_two_distinct_letters_no_digit_rejected():
     """ABA — only 2 distinct uppercase letters, no digit. Must be rejected."""
-    assert parse_stoichiometry_pattern("ABA") is None
+    assert parse_stoichiometry_pattern("ABA") == None  # noqa: E711
 
 
 # ---------------------------------------------------------------------------
@@ -123,22 +122,22 @@ def test_two_distinct_letters_no_digit_rejected():
 
 def test_empty_string():
     """Empty input returns None."""
-    assert parse_stoichiometry_pattern("") is None
+    assert parse_stoichiometry_pattern("") == None  # noqa: E711
 
 
 def test_none_like_empty():
     """Whitespace-only returns None (no tokens to match)."""
-    assert parse_stoichiometry_pattern("   ") is None
+    assert parse_stoichiometry_pattern("   ") == None  # noqa: E711
 
 
 def test_digit_only_pattern():
     """A token with uppercase + digits like 'A2' is too short (< 3 chars after
     first letter) — the regex requires [A-Z][A-Z0-9]{2,}, so minimum 3 chars."""
-    assert parse_stoichiometry_pattern("A2") is None
+    assert parse_stoichiometry_pattern("A2") == None  # noqa: E711
 
 
 def test_mixed_case_not_matched():
     """'AbO3' has lowercase — word boundary splits it. Only all-upper tokens match."""
     # 'Ab' and 'O3' are separate tokens to the regex; neither matches [A-Z][A-Z0-9]{2,}.
     # Actually 'ABO3' in 'AbO3' doesn't exist — 'Ab' is lowercase-containing.
-    assert parse_stoichiometry_pattern("AbO3 compound") is None
+    assert parse_stoichiometry_pattern("AbO3 compound") == None  # noqa: E711
