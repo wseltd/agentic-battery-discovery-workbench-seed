@@ -14,6 +14,8 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
+from discovery_workbench.pareto import non_dominated_sort
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,86 +66,47 @@ class RankingResult:
 # Pareto helpers
 # ---------------------------------------------------------------------------
 
-def _dominates(scores_a: dict[str, float], scores_b: dict[str, float]) -> bool:
-    """Return True if *scores_a* Pareto-dominates *scores_b* (maximisation)."""
-    dominated = False
-    for key in scores_a:
-        if scores_a[key] < scores_b[key]:
-            return False
-        if scores_a[key] > scores_b[key]:
-            dominated = True
-    return dominated
-
-
-def _assign_fronts(
-    candidates: list[dict[str, Any]],
-) -> list[list[int]]:
-    """Assign candidates to Pareto fronts.  Returns list of fronts, each a
-    list of indices into *candidates*.  Front 0 is the non-dominated set."""
-    n = len(candidates)
-    remaining = set(range(n))
-    fronts: list[list[int]] = []
-
-    while remaining:
-        front: list[int] = []
-        for i in remaining:
-            is_dominated = False
-            for j in remaining:
-                if i == j:
-                    continue
-                if _dominates(candidates[j]["scores"], candidates[i]["scores"]):
-                    is_dominated = True
-                    break
-            if not is_dominated:
-                front.append(i)
-        # Deterministic ordering within a front for reproducibility.
-        front.sort()
-        fronts.append(front)
-        remaining -= set(front)
-    return fronts
-
 
 def _crowding_distances(
-    candidates: list[dict[str, Any]],
-    indices: list[int],
+    front: list[dict[str, Any]],
     weights: dict[str, float],
-) -> dict[int, float]:
-    """Compute crowding distance for candidates within a single front.
+) -> list[float]:
+    """Compute crowding distance for each candidate in a single front.
 
     Uses the NSGA-II algorithm: for each objective, sort the front members,
     assign infinity to boundary points, and accumulate normalised neighbour
     gaps scaled by the objective weight.
-    """
-    distances: dict[int, float] = {i: 0.0 for i in indices}
 
-    if len(indices) <= 2:
-        # With 1-2 members every candidate gets infinite distance.
-        for i in indices:
-            distances[i] = float("inf")
-        return distances
+    Returns a list aligned with *front* — distances[i] is the crowding
+    distance for front[i].
+    """
+    n = len(front)
+    distances = [0.0] * n
+
+    if n <= 2:
+        return [float("inf")] * n
 
     objectives = list(weights.keys())
     for obj in objectives:
-        # Sort indices by this objective's score.
-        sorted_idx = sorted(indices, key=lambda i: candidates[i]["scores"][obj])
-        obj_min = candidates[sorted_idx[0]]["scores"][obj]
-        obj_max = candidates[sorted_idx[-1]]["scores"][obj]
+        # Sort by this objective's score, tracking original position.
+        order = sorted(range(n), key=lambda i: front[i]["scores"][obj])
+        obj_min = front[order[0]]["scores"][obj]
+        obj_max = front[order[-1]]["scores"][obj]
         span = obj_max - obj_min
 
-        # Boundary points get infinite distance.
-        distances[sorted_idx[0]] = float("inf")
-        distances[sorted_idx[-1]] = float("inf")
+        distances[order[0]] = float("inf")
+        distances[order[-1]] = float("inf")
 
         if span == 0.0:
             continue
 
         w = weights[obj]
-        for k in range(1, len(sorted_idx) - 1):
+        for k in range(1, len(order) - 1):
             gap = (
-                candidates[sorted_idx[k + 1]]["scores"][obj]
-                - candidates[sorted_idx[k - 1]]["scores"][obj]
+                front[order[k + 1]]["scores"][obj]
+                - front[order[k - 1]]["scores"][obj]
             )
-            distances[sorted_idx[k]] += w * (gap / span)
+            distances[order[k]] += w * (gap / span)
 
     return distances
 
@@ -205,29 +168,31 @@ def compute_pareto_ranking(
     if not valid:
         return RankingResult()
 
-    fronts = _assign_fronts(valid)
+    objective_names = list(weights.keys())
+    fronts = non_dominated_sort(valid, objective_names)
 
-    # Build (front_index, -crowding_distance, candidate_index) tuples
-    # for sorting.  Lower front_index is better; higher crowding is better.
-    ranked_tuples: list[tuple[int, float, int]] = []
+    # Build (front_index, -crowding_distance, candidate) triples for
+    # sorting.  Lower front_index is better; higher crowding is better.
+    ranked: list[tuple[int, float, dict[str, Any]]] = []
     for front_idx, front in enumerate(fronts):
-        cd = _crowding_distances(valid, front, weights)
-        for cand_idx in front:
-            ranked_tuples.append((front_idx, -cd[cand_idx], cand_idx))
+        cd = _crowding_distances(front, weights)
+        for i, cand in enumerate(front):
+            ranked.append((front_idx, -cd[i], cand))
 
-    # Sort: ascending front_index, then ascending negative crowding distance
-    # (= descending crowding distance).
-    ranked_tuples.sort()
+    # Sort: ascending front_index, then ascending negative crowding
+    # (= descending crowding distance).  Ties broken by candidate_id
+    # for determinism.
+    ranked.sort(key=lambda t: (t[0], t[1], t[2]["candidate_id"]))
 
-    capped = ranked_tuples[:shortlist_size]
+    capped = ranked[:shortlist_size]
 
     shortlist: list[dict[str, Any]] = []
     audit_log: list[RankAuditEntry] = []
-    for rank_pos, (front_idx, neg_cd, cand_idx) in enumerate(capped, start=1):
-        shortlist.append(valid[cand_idx])
+    for rank_pos, (front_idx, neg_cd, cand) in enumerate(capped, start=1):
+        shortlist.append(cand)
         audit_log.append(
             RankAuditEntry(
-                candidate_id=valid[cand_idx]["candidate_id"],
+                candidate_id=cand["candidate_id"],
                 front_index=front_idx,
                 crowding_distance=-neg_cd,
                 final_rank=rank_pos,
