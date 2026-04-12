@@ -173,6 +173,12 @@ class ChEMBLNoveltyChecker:
     def check(self, mol: Mol) -> NoveltyResult:
         """Classify a molecule's novelty against the reference set.
 
+        Two-stage classification:
+        1. Exact InChIKey match → EXACT_KNOWN (cheap dict lookup, runs first).
+        2. Morgan fingerprint BulkTanimotoSimilarity against all references →
+           >= 0.70 CLOSE_ANALOGUE, 0.40–0.70 CLOSE_ANALOGUE (conservative gap),
+           < 0.40 NOVEL_LIKE.
+
         Parameters
         ----------
         mol:
@@ -181,7 +187,8 @@ class ChEMBLNoveltyChecker:
         Returns
         -------
         NoveltyResult
-            Classification with similarity details and evidence level.
+            Classification with closest_inchikey, max_tanimoto, and
+            evidence level (always HEURISTIC_ESTIMATED).
 
         Raises
         ------
@@ -243,12 +250,15 @@ class ChEMBLNoveltyChecker:
 def _classify_tanimoto(tanimoto: float) -> NoveltyClass:
     """Map a Tanimoto similarity score to a NoveltyClass.
 
-    >= 0.70 → CLOSE_ANALOGUE
-    >= 0.40 → CLOSE_ANALOGUE  (gap region — conservative, avoids over-claiming novelty)
-    <  0.40 → NOVEL_LIKE
+    >= 0.70 → CLOSE_ANALOGUE  (structural neighbour)
+    0.40–0.70 → CLOSE_ANALOGUE  (gap region — conservative to avoid over-claiming novelty)
+    <  0.40 → NOVEL_LIKE  (no match found under these criteria)
     """
     if tanimoto >= CLOSE_ANALOGUE_THRESHOLD:
         return NoveltyClass.CLOSE_ANALOGUE
+    # Gap region: 0.40 <= tanimoto < 0.70 — conservatively classified as
+    # CLOSE_ANALOGUE rather than a separate tier, to avoid over-claiming
+    # novelty for moderately similar structures.
     if tanimoto >= NOVEL_LIKE_THRESHOLD:
         return NoveltyClass.CLOSE_ANALOGUE
     return NoveltyClass.NOVEL_LIKE
