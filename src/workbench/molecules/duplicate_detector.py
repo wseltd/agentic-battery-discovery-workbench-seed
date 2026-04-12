@@ -20,7 +20,7 @@ from enum import Enum
 from rdkit.Chem import Mol, MolToSmiles
 from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
 from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
-from rdkit.DataStructs import TanimotoSimilarity
+from rdkit.DataStructs import BulkTanimotoSimilarity
 
 
 # --- Constants ---------------------------------------------------------------
@@ -178,13 +178,13 @@ class DuplicateDetector:
             mol, _MORGAN_RADIUS, nBits=_MORGAN_NBITS
         )
 
-        best_id: str | None = None
-        best_sim: float = 0.0
-        for mol_id, registered_fp in self._fingerprints:
-            sim = TanimotoSimilarity(fp, registered_fp)
-            if sim > best_sim:
-                best_sim = sim
-                best_id = mol_id
+        # Bulk similarity is O(n) but avoids Python-level loop overhead
+        registered_fps = [rfp for _, rfp in self._fingerprints]
+        similarities = BulkTanimotoSimilarity(fp, registered_fps)
+
+        best_idx = max(range(len(similarities)), key=lambda i: similarities[i])
+        best_sim = similarities[best_idx]
+        best_id = self._fingerprints[best_idx][0]
 
         if best_sim >= NEAR_DUPLICATE_THRESHOLD:
             return DuplicateResult(
