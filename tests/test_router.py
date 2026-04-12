@@ -34,6 +34,10 @@ class TestRoutingResultDataclass:
             result.matched_keywords = frozenset()  # type: ignore[misc]
         with pytest.raises(AttributeError):
             result.stage = "probabilistic"  # type: ignore[misc]
+        # Fields unchanged after mutation attempts
+        assert result.domain == "small_molecule"
+        assert result.matched_keywords == frozenset({"clogp"})
+        assert result.stage == "deterministic"
 
     def test_routing_result_default_construction(self) -> None:
         """Verify all four fields are present with expected types."""
@@ -50,13 +54,14 @@ class TestRoutingResultDataclass:
 
     def test_routing_result_rejects_wrong_stage(self) -> None:
         """stage must be 'deterministic' — anything else is a bug."""
-        with pytest.raises(ValueError, match="stage must be 'deterministic'"):
+        with pytest.raises(ValueError, match="stage must be 'deterministic'") as exc_info:
             RoutingResult(
                 domain=None,
                 matched_keywords=frozenset(),
                 ambiguity_hits=frozenset(),
                 stage="probabilistic",  # type: ignore[arg-type]
             )
+        assert "probabilistic" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
