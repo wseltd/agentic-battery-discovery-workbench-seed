@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import subprocess  # nosec B404 — subprocess is the intended interface to REINVENT 4
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -218,6 +220,102 @@ class Reinvent4Client:
         # Merge any remaining caller-supplied parameters into the config
         config["parameters"].update(params)
         return config
+
+    # ------------------------------------------------------------------
+    # Public generation methods — compose config, run, parse
+    # ------------------------------------------------------------------
+
+    def generate_de_novo(
+        self,
+        constraints: ParsedConstraints,
+    ) -> list[GeneratedMolecule]:
+        """Generate molecules from scratch using REINVENT 4.
+
+        Builds a de-novo config, writes it to a temp file, runs the
+        REINVENT subprocess, and parses the CSV output.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints to guide generation.
+
+        Returns
+        -------
+        list[GeneratedMolecule]
+            Molecules produced by the generation run.
+        """
+        return self._run_generation("de_novo", constraints, parameters={})
+
+    def generate_scaffold_constrained(
+        self,
+        constraints: ParsedConstraints,
+        scaffold: str,
+    ) -> list[GeneratedMolecule]:
+        """Generate molecules constrained to a scaffold using REINVENT 4.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints to guide generation.
+        scaffold:
+            SMILES string of the scaffold to constrain generation around.
+
+        Returns
+        -------
+        list[GeneratedMolecule]
+            Molecules produced by the generation run.
+        """
+        return self._run_generation(
+            "scaffold_constrained", constraints, parameters={"scaffold": scaffold}
+        )
+
+    def generate_optimise(
+        self,
+        constraints: ParsedConstraints,
+        smiles: list[str],
+    ) -> list[GeneratedMolecule]:
+        """Optimise existing molecules using REINVENT 4.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints to guide optimisation.
+        smiles:
+            Starting SMILES strings to optimise.
+
+        Returns
+        -------
+        list[GeneratedMolecule]
+            Molecules produced by the optimisation run.
+        """
+        return self._run_generation(
+            "optimise", constraints, parameters={"starting_molecules": smiles}
+        )
+
+    def _run_generation(
+        self,
+        task_type: str,
+        constraints: ParsedConstraints,
+        parameters: dict[str, Any],
+    ) -> list[GeneratedMolecule]:
+        """Shared orchestration: build config, write temp file, run, parse.
+
+        Uses JSON serialisation for the temp config file — stdlib has no
+        TOML writer, and adding tomli_w for a single write site is not
+        worth the dependency. REINVENT 4 accepts both formats.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_csv = Path(tmpdir) / "output.csv"
+            parameters["output_csv"] = str(output_csv)
+            config = self.build_config(task_type, parameters, constraints)
+
+            config_path = Path(tmpdir) / "config.toml"
+            config_path.write_text(
+                json.dumps(config, indent=2), encoding="utf-8"
+            )
+
+            self._run_reinvent(config_path)
+            return self._parse_output(output_csv, task_type)
 
     # ------------------------------------------------------------------
     # Private TOML config-dict builders — one per task type

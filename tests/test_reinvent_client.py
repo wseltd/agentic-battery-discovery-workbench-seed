@@ -362,6 +362,177 @@ class TestInvokeReinventSuccess:
 
 
 # ---------------------------------------------------------------------------
+# generate_de_novo end-to-end tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateDeNovo:
+    """End-to-end: generate_de_novo writes config, calls subprocess, parses output."""
+
+    def test_generate_de_novo_returns_molecules(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        csv_output = "SMILES,Score\nCCO,0.9\nCCN,0.8\n"
+        constraints: dict = {"max_weight": 500}
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            def write_csv_side_effect(args, **kwargs):
+                # The config file was written; find the output_csv from the config
+                import json
+                config_path = Path(args[1])
+                cfg = json.loads(config_path.read_text())
+                output_csv = Path(cfg["output_csv"])
+                output_csv.write_text(csv_output)
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = write_csv_side_effect
+            molecules = client.generate_de_novo(constraints)
+
+        assert len(molecules) == 2
+        assert molecules[0].smiles == "CCO"
+        assert molecules[0].task_type == "de_novo"
+        assert molecules[0].evidence_level is EvidenceLevel.GENERATED
+
+    def test_generate_de_novo_passes_constraints_to_config(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        constraints: dict = {"logp": {"min": 1.0, "max": 5.0}}
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            captured_config = {}
+
+            def capture_config(args, **kwargs):
+                import json
+                config_path = Path(args[1])
+                captured_config.update(json.loads(config_path.read_text()))
+                output_csv = Path(captured_config["output_csv"])
+                output_csv.write_text("SMILES,Score\n")
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = capture_config
+            client.generate_de_novo(constraints)
+
+        assert "scoring" in captured_config
+        names = [c["name"] for c in captured_config["scoring"]["components"]]
+        assert "logp" in names
+
+
+# ---------------------------------------------------------------------------
+# generate_scaffold_constrained end-to-end tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateScaffoldConstrained:
+    def test_generate_scaffold_constrained_returns_molecules(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        csv_output = "SMILES,Score\nc1ccc(O)cc1,0.75\n"
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            def write_csv_side_effect(args, **kwargs):
+                import json
+                cfg = json.loads(Path(args[1]).read_text())
+                Path(cfg["output_csv"]).write_text(csv_output)
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = write_csv_side_effect
+            molecules = client.generate_scaffold_constrained(
+                constraints={}, scaffold="c1ccccc1"
+            )
+
+        assert len(molecules) == 1
+        assert molecules[0].smiles == "c1ccc(O)cc1"
+        assert molecules[0].task_type == "scaffold_constrained"
+
+    def test_generate_scaffold_constrained_includes_scaffold_in_config(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        captured_config = {}
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            def capture_config(args, **kwargs):
+                import json
+                captured_config.update(json.loads(Path(args[1]).read_text()))
+                Path(captured_config["output_csv"]).write_text("SMILES,Score\n")
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = capture_config
+            client.generate_scaffold_constrained(
+                constraints={}, scaffold="c1ccccc1"
+            )
+
+        assert captured_config["parameters"]["scaffold"] == "c1ccccc1"
+
+
+# ---------------------------------------------------------------------------
+# generate_optimise end-to-end tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateOptimise:
+    def test_generate_optimise_returns_molecules(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        csv_output = "SMILES,Score\nCCO,0.88\nCCN,0.77\n"
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            def write_csv_side_effect(args, **kwargs):
+                import json
+                cfg = json.loads(Path(args[1]).read_text())
+                Path(cfg["output_csv"]).write_text(csv_output)
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = write_csv_side_effect
+            molecules = client.generate_optimise(
+                constraints={}, smiles=["CCO", "CCN"]
+            )
+
+        assert len(molecules) == 2
+        assert molecules[0].task_type == "optimise"
+        assert molecules[1].score == pytest.approx(0.77)
+
+    def test_generate_optimise_includes_starting_molecules_in_config(self) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        captured_config = {}
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            def capture_config(args, **kwargs):
+                import json
+                captured_config.update(json.loads(Path(args[1]).read_text()))
+                Path(captured_config["output_csv"]).write_text("SMILES,Score\n")
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                )
+
+            mock_run.side_effect = capture_config
+            client.generate_optimise(
+                constraints={}, smiles=["CCO", "CCN"]
+            )
+
+        assert captured_config["parameters"]["starting_molecules"] == ["CCO", "CCN"]
+
+    def test_generate_optimise_nonzero_exit_raises(self) -> None:
+        """Subprocess failure propagates as Reinvent4Error through generate_*."""
+        client = Reinvent4Client("/fake/reinvent")
+
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["/fake/reinvent", "config.toml"],
+                returncode=1,
+                stdout="",
+                stderr="OOM killed",
+            )
+            with pytest.raises(Reinvent4Error) as exc_info:
+                client.generate_optimise(constraints={}, smiles=["CCO"])
+            assert exc_info.value.returncode == 1
+
+
+# ---------------------------------------------------------------------------
 # evidence_level tests
 # ---------------------------------------------------------------------------
 
