@@ -1,15 +1,21 @@
 """Confidence-scored domain router.
 
-Builds on the deterministic keyword registry (T005/T006) to produce a
-numeric confidence score and a threshold-gated action.  The confidence
-is keyword density: matched keywords / total unigrams in the input.
-This is a heuristic, not a classifier — it measures how keyword-rich
-the request is relative to its length.
+Builds on the deterministic keyword router (T006) and confidence
+computation (T007.b) to produce a numeric confidence score and a
+threshold-gated action.  The confidence is keyword density: matched
+keywords / total unigrams in the input.  This is a heuristic, not a
+classifier — it measures how keyword-rich the request is relative to
+its length.
 
 Chose keyword density over raw count because a 3-keyword match in a
 3-word query is much more decisive than 3 keywords in a 50-word query.
 Alternative: TF-IDF or learned embeddings — rejected because this is a
 deterministic gate and must run without model inference.
+
+Threshold logic is inlined rather than calling apply_thresholds because
+thresholds.py imports constants from this module — calling back would
+create a circular import.  The six-line cascade is identical to
+apply_thresholds and tested at every boundary.
 """
 
 from __future__ import annotations
@@ -17,10 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from discovery_workbench.routing.keywords import (
-    AMBIGUITY_KEYWORDS,
-    classify_token,
-)
+from discovery_workbench.routing.confidence import compute_confidence
+from discovery_workbench.routing.router import route_deterministic
 from discovery_workbench.routing.tokeniser import tokenise
 
 # ---------------------------------------------------------------------------
@@ -73,9 +77,9 @@ class ScoredRoutingResult:
 def route_with_confidence(text: str) -> ScoredRoutingResult:
     """Route a user request with a confidence score.
 
-    Tokenises *text*, classifies tokens against the keyword registry,
-    computes keyword density as the confidence score, and applies
-    threshold-gated action rules.
+    Delegates domain classification to :func:`route_deterministic` (T006)
+    and keyword density to :func:`compute_confidence` (T007.b), then
+    applies threshold-gated action rules.
 
     Action rules (in priority order):
 
@@ -99,60 +103,44 @@ def route_with_confidence(text: str) -> ScoredRoutingResult:
     ScoredRoutingResult
         Frozen verdict with confidence score and threshold-gated action.
     """
+    det = route_deterministic(text)
+
+    # Tokenise to get the unigram count for confidence denominator.
+    # Bigrams are derived from unigrams (N unigrams → N-1 bigrams),
+    # so unigram_count = (len(tokens) + 1) // 2.
     tokens = tokenise(text)
-
-    # Separate unigrams from bigrams for denominator — bigrams are
-    # generated from N unigrams, so there are N-1 bigrams.  We only
-    # count unigrams in the denominator because bigram matches represent
-    # the same underlying words.
-    matched_keywords: set[str] = set()
-    ambiguity_hits: set[str] = set()
-    domains_seen: set[str] = set()
-
-    for token in tokens:
-        if token in AMBIGUITY_KEYWORDS:
-            ambiguity_hits.add(token)
-            continue
-        domain = classify_token(token)
-        if domain is not None:
-            matched_keywords.add(token)
-            domains_seen.add(domain)
-
-    # Count unigrams: tokens before the bigram portion.  Bigrams start
-    # at index N where N is the unigram count (N unigrams + N-1 bigrams
-    # = 2N-1 total).  Solve: unigrams + (unigrams - 1) = len(tokens)
-    # → unigrams = (len(tokens) + 1) / 2 when tokens > 0.
     if not tokens:
         unigram_count = 0
     else:
         unigram_count = (len(tokens) + 1) // 2
 
-    # Confidence = keyword density (unique matched keywords / unigrams)
-    if unigram_count == 0:
-        confidence = 0.0
-    else:
-        raw = len(matched_keywords) / unigram_count
-        confidence = min(raw, 1.0)  # clamp to [0, 1]
+    confidence = compute_confidence(len(det.matched_keywords), unigram_count)
 
-    # Determine domain
-    routable = domains_seen - {"unsupported"}
-
-    if len(routable) == 1:
-        resolved_domain = next(iter(routable))
-    elif len(routable) > 1:
-        resolved_domain = None  # mixed signal
-    else:
+    # Map deterministic domain to scored domain and action flags.
+    # "unsupported" is not a routable domain — surface it as None
+    # with an unsupported action.
+    if det.domain is not None and det.domain != "unsupported":
+        # Clear single-domain signal from deterministic gate
+        resolved_domain: str | None = det.domain
+        is_ambiguous = False
+        is_unsupported = False
+    elif det.domain == "unsupported":
         resolved_domain = None
+        is_ambiguous = False
+        is_unsupported = True
+    else:
+        # domain is None: ambiguity keywords, mixed domains, or no signal.
+        # Ambiguity/mixed → force clarify; no signal → let thresholds decide.
+        resolved_domain = None
+        is_ambiguous = bool(det.ambiguity_hits) or bool(det.matched_keywords)
+        is_unsupported = False
 
-    # Determine action (priority order matches docstring)
-    if unigram_count == 0:
+    # Threshold cascade — identical to apply_thresholds (thresholds.py),
+    # inlined to avoid circular import.
+    if is_unsupported:
         action: Literal["auto", "clarify", "unsupported"] = "unsupported"
-    elif ambiguity_hits:
+    elif is_ambiguous:
         action = "clarify"
-    elif len(routable) > 1:
-        action = "clarify"
-    elif domains_seen == {"unsupported"}:
-        action = "unsupported"
     elif confidence >= CONFIDENCE_AUTO_THRESHOLD:
         action = "auto"
     elif confidence >= CONFIDENCE_CLARIFY_THRESHOLD:
@@ -164,7 +152,7 @@ def route_with_confidence(text: str) -> ScoredRoutingResult:
         domain=resolved_domain,
         confidence=confidence,
         action=action,
-        matched_keywords=frozenset(matched_keywords),
-        ambiguity_hits=frozenset(ambiguity_hits),
+        matched_keywords=det.matched_keywords,
+        ambiguity_hits=det.ambiguity_hits,
         stage="scored",
     )
