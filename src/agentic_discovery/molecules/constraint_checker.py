@@ -89,57 +89,6 @@ class ConstraintResult:
             self.all_satisfied = all(r.passed for r in self.results)
 
 
-def _check_numeric(
-    mol: Chem.Mol,
-    constraint_name: str,
-    operator: str,
-    value: float,
-) -> SingleConstraintResult:
-    """Evaluate a single numeric property constraint."""
-    calculator = _PROPERTY_CALCULATORS.get(constraint_name)
-    if calculator is None:
-        return SingleConstraintResult(
-            constraint_name=constraint_name,
-            operator=operator,
-            target_value=value,
-            actual_value=None,
-            passed=False,
-            reason=f"Unknown property '{constraint_name}'",
-        )
-
-    actual = calculator(mol)
-
-    ops = {
-        ">=": actual >= value,
-        "<=": actual <= value,
-        ">": actual > value,
-        "<": actual < value,
-        "==": actual == value,
-    }
-    passed = ops.get(operator, False)
-    if operator not in ops:
-        return SingleConstraintResult(
-            constraint_name=constraint_name,
-            operator=operator,
-            target_value=value,
-            actual_value=actual,
-            passed=False,
-            reason=f"Unsupported operator '{operator}'",
-        )
-
-    reason = None if passed else (
-        f"{constraint_name} {actual} does not satisfy {operator} {value}"
-    )
-    return SingleConstraintResult(
-        constraint_name=constraint_name,
-        operator=operator,
-        target_value=value,
-        actual_value=actual,
-        passed=passed,
-        reason=reason,
-    )
-
-
 def _check_smarts(
     mol: Chem.Mol,
     pattern: str,
@@ -192,19 +141,102 @@ class ConstraintChecker:
 
     Parameters
     ----------
-    constraints:
+    parsed_constraints:
         List of constraint dicts.  Each dict must have a ``"type"`` key
         (``"numeric"`` or ``"smarts"``).
 
         Numeric constraints require ``"property"``, ``"operator"``, and
-        ``"value"`` keys.
+        ``"value"`` keys.  The ``"range"`` operator expects ``"value"``
+        to be a two-element tuple/list ``(min_val, max_val)`` where
+        either element can be ``None`` for open-ended ranges.
 
         SMARTS constraints require ``"pattern"`` and ``"mode"``
         (``"required"`` or ``"forbidden"``) keys.
     """
 
-    def __init__(self, constraints: list[dict[str, Any]]) -> None:
-        self.constraints = constraints
+    def __init__(self, parsed_constraints: list[dict[str, Any]]) -> None:
+        self.parsed_constraints = parsed_constraints
+
+    def _check_numeric(
+        self,
+        constraint_name: str,
+        operator: str,
+        actual_value: float,
+        target_value: float | tuple[float | None, float | None],
+    ) -> SingleConstraintResult:
+        """Evaluate a single numeric comparison.
+
+        Parameters
+        ----------
+        constraint_name:
+            Property name (e.g. ``"molecular_weight"``).
+        operator:
+            One of ``"<="``, ``">="``, ``"=="``, ``"range"``.
+        actual_value:
+            The computed property value from the molecule.
+        target_value:
+            For scalar operators, a single float.  For ``"range"``, a
+            tuple ``(min_val, max_val)`` where either can be ``None``
+            for an open-ended bound.
+        """
+        if operator == "range":
+            if not isinstance(target_value, (tuple, list)) or len(target_value) != 2:
+                return SingleConstraintResult(
+                    constraint_name=constraint_name,
+                    operator=operator,
+                    target_value=target_value,
+                    actual_value=actual_value,
+                    passed=False,
+                    reason=f"range operator requires a (min, max) tuple, got {target_value!r}",
+                )
+            min_val, max_val = target_value
+            above_min = min_val is None or actual_value >= min_val
+            below_max = max_val is None or actual_value <= max_val
+            passed = above_min and below_max
+            reason = None if passed else (
+                f"{constraint_name} {actual_value} not in range "
+                f"[{min_val}, {max_val}]"
+            )
+            return SingleConstraintResult(
+                constraint_name=constraint_name,
+                operator=operator,
+                target_value=target_value,
+                actual_value=actual_value,
+                passed=passed,
+                reason=reason,
+            )
+
+        # At this point target_value is a scalar float (range handled above).
+        scalar_target: float = float(target_value)  # type: ignore[arg-type]
+        scalar_ops = {
+            ">=": actual_value >= scalar_target,
+            "<=": actual_value <= scalar_target,
+            ">": actual_value > scalar_target,
+            "<": actual_value < scalar_target,
+            "==": actual_value == scalar_target,
+        }
+        if operator not in scalar_ops:
+            return SingleConstraintResult(
+                constraint_name=constraint_name,
+                operator=operator,
+                target_value=target_value,
+                actual_value=actual_value,
+                passed=False,
+                reason=f"Unsupported operator '{operator}'",
+            )
+
+        passed = scalar_ops[operator]
+        reason = None if passed else (
+            f"{constraint_name} {actual_value} does not satisfy {operator} {target_value}"
+        )
+        return SingleConstraintResult(
+            constraint_name=constraint_name,
+            operator=operator,
+            target_value=target_value,
+            actual_value=actual_value,
+            passed=passed,
+            reason=reason,
+        )
 
     def check(self, smiles: str) -> ConstraintResult:
         """Evaluate all constraints against a molecule.
@@ -237,14 +269,27 @@ class ConstraintChecker:
             )
 
         results: list[SingleConstraintResult] = []
-        for constraint in self.constraints:
+        for constraint in self.parsed_constraints:
             ctype = constraint["type"]
             if ctype == "numeric":
+                prop_name = constraint["property"]
+                calculator = _PROPERTY_CALCULATORS.get(prop_name)
+                if calculator is None:
+                    results.append(SingleConstraintResult(
+                        constraint_name=prop_name,
+                        operator=constraint["operator"],
+                        target_value=constraint["value"],
+                        actual_value=None,
+                        passed=False,
+                        reason=f"Unknown property '{prop_name}'",
+                    ))
+                    continue
+                actual = calculator(mol)
                 results.append(
-                    _check_numeric(
-                        mol,
-                        constraint["property"],
+                    self._check_numeric(
+                        prop_name,
                         constraint["operator"],
+                        actual,
                         constraint["value"],
                     )
                 )
