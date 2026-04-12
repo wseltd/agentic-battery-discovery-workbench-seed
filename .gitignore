@@ -1,10 +1,30 @@
+# Python bytecode
 __pycache__/
 *.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Build and distribution
+dist/
+build/
+*.egg-info/
+
+# Test and lint caches
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-*.egg-info/
-dist/
-build/
+
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+
+# Environment files
 .env
-.venv/
+
+# Agent outputs
+agent_output/
