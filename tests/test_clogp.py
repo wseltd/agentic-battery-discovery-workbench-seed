@@ -73,6 +73,8 @@ class TestEdgeCases:
         assert mol is not None
         clogp = calc_clogp(mol)
         assert isinstance(clogp, float)
+        # Crippen atom contributions give ammonium ~0.38
+        assert abs(clogp - 0.38) < 0.1
 
     def test_single_atom_methane(self):
         """Methane — smallest organic molecule."""
@@ -101,4 +103,7 @@ class TestEdgeCases:
     def test_return_type_is_float(self):
         mol = Chem.MolFromSmiles("C")
         assert mol is not None
-        assert isinstance(calc_clogp(mol), float)
+        result = calc_clogp(mol)
+        assert isinstance(result, float)
+        # Methane cLogP ~0.64 — same reference as test_single_atom_methane
+        assert abs(result - 0.64) < _CLOGP_TOLERANCE
