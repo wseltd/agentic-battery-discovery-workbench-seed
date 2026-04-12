@@ -10,6 +10,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+__all__ = [
+    "ConstraintResult",
+    "ExportPaths",
+    "MoleculeReportAnnex",
+    "NoveltyStats",
+    "UniquenessStats",
+    "ValidityStats",
+    "build_molecule_annex",
+]
+
 
 @dataclass(frozen=True)
 class ValidityStats:
