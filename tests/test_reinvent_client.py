@@ -9,6 +9,7 @@ run REINVENT in CI.
 from __future__ import annotations
 
 import subprocess  # nosec B404 — testing subprocess-based REINVENT client
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -74,9 +75,90 @@ class TestBuildConfigConstraints:
         client = Reinvent4Client("/fake/reinvent")
         constraints = {"max_weight": 500, "min_logp": -1.0}
         cfg = client.build_config("de_novo", {}, constraints=constraints)
-        assert cfg["constraints"] == {"max_weight": 500, "min_logp": -1.0}
-        # Constraints dict should be a copy, not the same object
-        assert cfg["constraints"] is not constraints
+        # Constraints are now expressed as scoring components
+        assert "scoring" in cfg
+        component_names = [c["name"] for c in cfg["scoring"]["components"]]
+        assert "max_weight" in component_names
+        assert "min_logp" in component_names
+
+
+# ---------------------------------------------------------------------------
+# Private config builder tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDeNovoConfig:
+    def test_de_novo_config_structure(self, tmp_path: Path) -> None:
+        """De-novo config must contain run_type, task_type, output_csv."""
+        client = Reinvent4Client("/fake/reinvent")
+        output_csv = tmp_path / "output.csv"
+        cfg = client._build_de_novo_config({}, output_csv)
+        assert cfg["run_type"] == "sampling"
+        assert cfg["task_type"] == "de_novo"
+        assert cfg["output_csv"] == str(output_csv)
+
+    def test_de_novo_config_with_constraints(self, tmp_path: Path) -> None:
+        """Constraints should populate the scoring section."""
+        client = Reinvent4Client("/fake/reinvent")
+        constraints = {"molecular_weight": {"max": 500}}
+        cfg = client._build_de_novo_config(constraints, tmp_path / "out.csv")
+        assert "scoring" in cfg
+        assert len(cfg["scoring"]["components"]) == 1
+        assert cfg["scoring"]["components"][0]["name"] == "molecular_weight"
+
+    def test_de_novo_config_no_constraints_omits_scoring(self, tmp_path: Path) -> None:
+        """Empty constraints should not produce a scoring section."""
+        client = Reinvent4Client("/fake/reinvent")
+        cfg = client._build_de_novo_config({}, tmp_path / "out.csv")
+        assert "scoring" not in cfg
+
+
+class TestScaffoldBuilder:
+    def test_scaffold_config_includes_scaffold(self, tmp_path: Path) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        output_csv = tmp_path / "output.csv"
+        cfg = client._build_scaffold_constrained_config(
+            {}, scaffold="c1ccccc1", output_csv=output_csv
+        )
+        assert cfg["task_type"] == "scaffold_constrained"
+        assert cfg["parameters"]["scaffold"] == "c1ccccc1"
+        assert cfg["output_csv"] == str(output_csv)
+
+    def test_scaffold_config_with_constraints(self, tmp_path: Path) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        constraints = {"logp": {"min": 1.0, "max": 5.0}}
+        cfg = client._build_scaffold_constrained_config(
+            constraints, scaffold="c1ccccc1", output_csv=tmp_path / "out.csv"
+        )
+        assert cfg["scoring"]["components"][0]["name"] == "logp"
+        assert cfg["scoring"]["components"][0]["params"] == {"min": 1.0, "max": 5.0}
+
+
+class TestBuildOptimiseConfig:
+    def test_optimise_config_includes_starting_molecules(self, tmp_path: Path) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        output_csv = tmp_path / "output.csv"
+        cfg = client._build_optimise_config(
+            {}, smiles=["CCO", "CCN"], output_csv=output_csv
+        )
+        assert cfg["task_type"] == "optimise"
+        assert cfg["parameters"]["starting_molecules"] == ["CCO", "CCN"]
+        assert cfg["output_csv"] == str(output_csv)
+
+    def test_optimise_config_with_constraints(self, tmp_path: Path) -> None:
+        client = Reinvent4Client("/fake/reinvent")
+        constraints = {"tpsa": {"max": 140}}
+        cfg = client._build_optimise_config(
+            constraints, smiles=["CCO"], output_csv=tmp_path / "out.csv"
+        )
+        assert "scoring" in cfg
+        assert cfg["scoring"]["components"][0]["name"] == "tpsa"
+
+    def test_optimise_config_no_smiles(self, tmp_path: Path) -> None:
+        """Omitting smiles should not add starting_molecules key."""
+        client = Reinvent4Client("/fake/reinvent")
+        cfg = client._build_optimise_config({}, output_csv=tmp_path / "out.csv")
+        assert "starting_molecules" not in cfg["parameters"]
 
 
 # ---------------------------------------------------------------------------

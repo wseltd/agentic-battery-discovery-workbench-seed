@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 _VALID_TASK_TYPES = frozenset({"de_novo", "scaffold_constrained", "optimise"})
 
+# Type alias — ParsedConstraints is a plain dict until a richer type is warranted.
+ParsedConstraints = dict[str, Any]
+
 
 @dataclass(frozen=True)
 class GeneratedMolecule:
@@ -111,24 +114,144 @@ class Reinvent4Client:
                 f"expected one of {sorted(_VALID_TASK_TYPES)}"
             )
 
-        config: dict[str, Any] = {
-            "run_type": "sampling",
-            "task_type": task_type,
-            "parameters": dict(parameters),
-        }
+        parsed = ParsedConstraints(constraints) if constraints is not None else {}
+        # Default output_csv from parameters, or None — callers that need
+        # a real path should use the private _build_*_config methods directly.
+        params = dict(parameters)
+        output_csv = Path(params.pop("output_csv", "/dev/null"))
 
-        if task_type == "scaffold_constrained":
-            config["parameters"].setdefault("scaffold", parameters.get("scaffold"))
-
-        if task_type == "optimise":
-            config["parameters"].setdefault(
-                "starting_molecules", parameters.get("starting_molecules")
+        if task_type == "de_novo":
+            config = self._build_de_novo_config(parsed, output_csv)
+        elif task_type == "scaffold_constrained":
+            scaffold = params.pop("scaffold", None)
+            config = self._build_scaffold_constrained_config(
+                parsed, scaffold=scaffold, output_csv=output_csv
+            )
+        else:  # optimise
+            smiles = params.pop("starting_molecules", None)
+            config = self._build_optimise_config(
+                parsed, smiles=smiles, output_csv=output_csv
             )
 
-        if constraints is not None:
-            config["constraints"] = dict(constraints)
-
+        # Merge any remaining caller-supplied parameters into the config
+        config["parameters"].update(params)
         return config
+
+    # ------------------------------------------------------------------
+    # Private TOML config-dict builders — one per task type
+    # ------------------------------------------------------------------
+
+    def _build_de_novo_config(
+        self,
+        constraints: ParsedConstraints,
+        output_csv: Path,
+    ) -> dict[str, Any]:
+        """Build a REINVENT 4 config dict for de-novo generation.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints to inject as scoring components.
+        output_csv:
+            Path where REINVENT should write its CSV output.
+
+        Returns
+        -------
+        dict[str, Any]
+            Nested dict matching REINVENT 4 TOML structure.
+        """
+        config: dict[str, Any] = {
+            "run_type": "sampling",
+            "task_type": "de_novo",
+            "parameters": {},
+            "output_csv": str(output_csv),
+        }
+        if constraints:
+            config["scoring"] = _scoring_section_from_constraints(constraints)
+        return config
+
+    def _build_scaffold_constrained_config(
+        self,
+        constraints: ParsedConstraints,
+        scaffold: str | None = None,
+        output_csv: Path = Path("/dev/null"),
+    ) -> dict[str, Any]:
+        """Build a REINVENT 4 config dict for scaffold-constrained generation.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints.
+        scaffold:
+            SMILES of the scaffold to constrain generation around.
+        output_csv:
+            Path where REINVENT should write its CSV output.
+
+        Returns
+        -------
+        dict[str, Any]
+            Nested dict matching REINVENT 4 TOML structure.
+        """
+        config: dict[str, Any] = {
+            "run_type": "sampling",
+            "task_type": "scaffold_constrained",
+            "parameters": {},
+            "output_csv": str(output_csv),
+        }
+        if scaffold is not None:
+            config["parameters"]["scaffold"] = scaffold
+        if constraints:
+            config["scoring"] = _scoring_section_from_constraints(constraints)
+        return config
+
+    def _build_optimise_config(
+        self,
+        constraints: ParsedConstraints,
+        smiles: list[str] | None = None,
+        output_csv: Path = Path("/dev/null"),
+    ) -> dict[str, Any]:
+        """Build a REINVENT 4 config dict for molecule optimisation.
+
+        Parameters
+        ----------
+        constraints:
+            Parsed property constraints.
+        smiles:
+            Starting SMILES for optimisation.
+        output_csv:
+            Path where REINVENT should write its CSV output.
+
+        Returns
+        -------
+        dict[str, Any]
+            Nested dict matching REINVENT 4 TOML structure.
+        """
+        config: dict[str, Any] = {
+            "run_type": "sampling",
+            "task_type": "optimise",
+            "parameters": {},
+            "output_csv": str(output_csv),
+        }
+        if smiles is not None:
+            config["parameters"]["starting_molecules"] = list(smiles)
+        if constraints:
+            config["scoring"] = _scoring_section_from_constraints(constraints)
+        return config
+
+
+def _scoring_section_from_constraints(
+    constraints: ParsedConstraints,
+) -> dict[str, Any]:
+    """Convert parsed constraints into a REINVENT 4 scoring section.
+
+    Each constraint becomes a scoring component keyed by property name.
+    Chose a flat component list over nested transform groups — REINVENT 4
+    accepts both, and the flat form is simpler to construct and test.
+    """
+    components: list[dict[str, Any]] = []
+    for prop_name, bound in constraints.items():
+        components.append({"name": prop_name, "weight": 1.0, "params": bound})
+    return {"components": components}
 
 
 def build_config(
