@@ -34,6 +34,10 @@ xtb structure.xyz --chrg "$CHARGE" --uhf $(( MULTIPLICITY - 1 )) --opt tight
 class ConformerGenerationError(ValueError):
     """Raised when RDKit cannot generate a 3-D conformer for a molecule."""
 
+    def __repr__(self) -> str:
+        msg = str(self)
+        return f"ConformerGenerationError({msg!r})"
+
 
 @dataclasses.dataclass(frozen=True)
 class HandoffBundle:
