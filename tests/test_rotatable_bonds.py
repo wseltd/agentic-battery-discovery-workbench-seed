@@ -63,6 +63,7 @@ class TestEdgeCases:
         assert mol is not None
         result = calc_rotatable_bonds(mol)
         assert isinstance(result, int)
+        assert result == 1
 
     def test_none_input_raises_type_error(self):
         with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
