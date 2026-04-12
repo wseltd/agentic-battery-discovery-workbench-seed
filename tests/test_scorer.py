@@ -100,8 +100,10 @@ class TestEdgeCases:
 
     def test_scored_result_is_frozen(self) -> None:
         result = route_with_confidence("smiles")
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             result.domain = "hacked"  # type: ignore[misc]
+        assert exc_info.value is not None
+        assert result.domain != "hacked", "frozen dataclass must reject mutation"
 
     def test_confidence_clamped_zero_to_one(self) -> None:
         """Confidence never exceeds 1.0, even with bigram double-matches."""
@@ -113,7 +115,7 @@ class TestEdgeCases:
         assert result.stage == "scored"
 
     def test_invalid_stage_rejected(self) -> None:
-        with pytest.raises(ValueError, match="stage must be 'scored'"):
+        with pytest.raises(ValueError, match="stage must be 'scored'") as exc_info:
             ScoredRoutingResult(
                 domain=None,
                 confidence=0.5,
@@ -122,9 +124,10 @@ class TestEdgeCases:
                 ambiguity_hits=frozenset(),
                 stage="deterministic",  # type: ignore[arg-type]
             )
+        assert "deterministic" in str(exc_info.value)
 
     def test_confidence_out_of_range_rejected(self) -> None:
-        with pytest.raises(ValueError, match="confidence must be in"):
+        with pytest.raises(ValueError, match="confidence must be in") as exc_info:
             ScoredRoutingResult(
                 domain=None,
                 confidence=1.5,
@@ -133,6 +136,7 @@ class TestEdgeCases:
                 ambiguity_hits=frozenset(),
                 stage="scored",
             )
+        assert "1.5" in str(exc_info.value)
 
 
 class TestDomainRouting:
