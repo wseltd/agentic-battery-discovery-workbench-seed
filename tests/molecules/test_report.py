@@ -192,6 +192,17 @@ def test_constraint_result_numeric_window():
     assert cr.constraint_name == "MW"
 
 
+def test_constraint_result_frozen():
+    """Mutating a frozen ConstraintResult must raise FrozenInstanceError."""
+    cr = _make_constraint_mw()
+    assert cr.constraint_name == "MW"
+    assert cr.satisfied_count == 70
+    with pytest.raises(AttributeError):
+        cr.satisfied_count = 999  # type: ignore[misc]
+    # Value unchanged after failed mutation attempt
+    assert cr.satisfied_count == 70
+
+
 def test_constraint_result_smarts_constraint():
     """A SMARTS-based constraint uses None bounds, tracks match counts."""
     cr = ConstraintResult(
