@@ -8,6 +8,8 @@ computes the InChIKey.
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import dataclasses
 
 from rdkit import Chem
