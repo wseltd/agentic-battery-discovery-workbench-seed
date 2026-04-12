@@ -1,4 +1,5 @@
-"""Materials structure validation: parseability, lattice sanity, element, and atom-count checks."""
+"""Materials structure validation: parseability, lattice sanity, element, atom-count,
+interatomic-distance, and coordination-sanity checks."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
-from pymatgen.core import Structure
+from pymatgen.core import Element, Structure
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,11 @@ _MAX_ATOM_COUNT = 20
 # Noble gases are chemically inert and rarely form stable crystalline compounds.
 # Tc (43) and Pm (61) have no stable isotopes — synthesising them is impractical.
 # All Z >= 84 are radioactive with short-lived or difficult-to-handle isotopes.
+# Fraction of summed covalent radii below which two atoms are considered
+# unphysically close.  0.5 catches overlapping/collapsed sites while
+# tolerating compressed bonds that MatterGen occasionally proposes.
+MIN_DISTANCE_COVALENT_RATIO: float = 0.5
+
 FORBIDDEN_ATOMIC_NUMBERS: frozenset[int] = frozenset(
     {2, 10, 18, 36, 54, 86}  # noble gases
     | {43, 61}                 # Tc, Pm — no stable isotopes
@@ -197,4 +203,122 @@ def validate_atom_count(structure: Structure) -> ValidationResult:
 
     return ValidationResult(
         passed=True, stage="atom_count", message="", severity="hard"
+    )
+
+
+def validate_interatomic_distances(structure: Structure) -> ValidationResult:
+    """Hard-reject structures where any atom pair is unphysically close.
+
+    Uses pymatgen's periodic-aware :attr:`Structure.distance_matrix` (which
+    accounts for minimum-image convention) and compares each pair distance
+    against ``MIN_DISTANCE_COVALENT_RATIO * (r_cov_i + r_cov_j)`` where
+    *r_cov* is :pyattr:`Element.atomic_radius`.
+
+    Args:
+        structure: A pymatgen :class:`~pymatgen.core.Structure`.
+
+    Returns:
+        A :class:`ValidationResult` with ``stage='interatomic_distances'``
+        and ``severity='hard'``.
+    """
+    n = len(structure)
+    if n < 2:
+        return ValidationResult(
+            passed=True,
+            stage="interatomic_distances",
+            message="",
+            severity="hard",
+        )
+
+    # Periodic-aware distances — not raw Cartesian.
+    dist_matrix = structure.distance_matrix
+
+    cov_radii = [
+        float(Element(site.specie.symbol).atomic_radius)
+        for site in structure
+    ]
+
+    violations: list[str] = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = dist_matrix[i, j]
+            threshold = MIN_DISTANCE_COVALENT_RATIO * (cov_radii[i] + cov_radii[j])
+            if d < threshold:
+                sym_i = structure[i].specie.symbol
+                sym_j = structure[j].specie.symbol
+                violations.append(
+                    f"{sym_i}(#{i})–{sym_j}(#{j}): {d:.4f} Å < {threshold:.4f} Å"
+                )
+
+    if violations:
+        detail = "; ".join(violations)
+        return ValidationResult(
+            passed=False,
+            stage="interatomic_distances",
+            message=f"Atoms too close: {detail}",
+            severity="hard",
+        )
+
+    return ValidationResult(
+        passed=True,
+        stage="interatomic_distances",
+        message="",
+        severity="hard",
+    )
+
+
+def validate_coordination_sanity(structure: Structure) -> ValidationResult:
+    """Soft-flag structures with implausible coordination numbers.
+
+    Uses pymatgen :class:`~pymatgen.analysis.local_env.CrystalNN` to compute
+    the coordination number of each site.  A site with CN 0 (isolated) or
+    CN > 12 (hyper-coordinated) is flagged as suspicious.  This is a *soft*
+    check — MatterGen may intentionally produce unusual coordination, so we
+    warn rather than reject.
+
+    Args:
+        structure: A pymatgen :class:`~pymatgen.core.Structure`.
+
+    Returns:
+        A :class:`ValidationResult` with ``stage='coordination_sanity'``
+        and ``severity='soft'``.
+    """
+    # Import here — CrystalNN is expensive to import and only needed for this
+    # stage, not the fast-path distance/element checks.
+    from pymatgen.analysis.local_env import CrystalNN
+
+    nn = CrystalNN()
+    anomalies: list[str] = []
+
+    for idx, site in enumerate(structure):
+        try:
+            cn = nn.get_cn(structure, idx)
+        except Exception:
+            # CrystalNN can fail on pathological geometries; treat as CN 0.
+            logger.warning(
+                "CrystalNN failed for site %d (%s); treating as isolated",
+                idx,
+                site.specie.symbol,
+            )
+            cn = 0
+
+        if cn == 0:
+            anomalies.append(f"{site.specie.symbol}(#{idx}): CN=0 (isolated)")
+        elif cn > 12:
+            anomalies.append(f"{site.specie.symbol}(#{idx}): CN={cn} (>12)")
+
+    if anomalies:
+        detail = "; ".join(anomalies)
+        return ValidationResult(
+            passed=False,
+            stage="coordination_sanity",
+            message=f"Unusual coordination: {detail}",
+            severity="soft",
+        )
+
+    return ValidationResult(
+        passed=True,
+        stage="coordination_sanity",
+        message="",
+        severity="soft",
     )

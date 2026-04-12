@@ -1,4 +1,5 @@
-"""Tests for materials structure validation (parse, lattice, elements, atom count)."""
+"""Tests for materials structure validation (parse, lattice, elements, atom count,
+interatomic distances, coordination sanity)."""
 
 from __future__ import annotations
 
@@ -7,9 +8,12 @@ from pymatgen.core import Lattice, Structure
 
 from agentic_discovery.materials.validation import (
     FORBIDDEN_ATOMIC_NUMBERS,
+    MIN_DISTANCE_COVALENT_RATIO,
     ValidationResult,
     validate_allowed_elements,
     validate_atom_count,
+    validate_coordination_sanity,
+    validate_interatomic_distances,
     validate_lattice_sanity,
     validate_structure_parseable,
 )
@@ -302,3 +306,137 @@ class TestAtomCount:
         result = validate_atom_count(s)
         assert result.passed is False
         assert "20" in result.message
+
+
+# ---------------------------------------------------------------------------
+# validate_interatomic_distances — 6 tests (PBC + threshold edge cases)
+# ---------------------------------------------------------------------------
+
+class TestInteratomicDistances:
+    def test_distance_valid_si_diamond(self):
+        """Diamond-cubic Si (nearest-neighbour ≈2.35 Å) passes easily."""
+        si = _cubic_si()
+        result = validate_interatomic_distances(si)
+        assert result.passed is True
+        assert result.stage == "interatomic_distances"
+        assert result.severity == "hard"
+
+    def test_distance_overlapping_atoms_fails(self):
+        """Two atoms at the same fractional position (distance ≈ 0) must fail."""
+        s = Structure(
+            Lattice.cubic(5.0),
+            ["Si", "Si"],
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        )
+        result = validate_interatomic_distances(s)
+        assert result.passed is False
+        assert result.stage == "interatomic_distances"
+        assert "Si" in result.message
+
+    def test_distance_barely_below_threshold_fails(self):
+        """Place two Si atoms just below 0.5 * (r_Si + r_Si) apart.
+
+        Si covalent radius ≈ 1.11 Å → threshold = 0.5 * 2.22 = 1.11 Å.
+        Put atoms 1.10 Å apart (below threshold) → must fail.
+        """
+        from pymatgen.core import Element
+
+        r_si = float(Element("Si").atomic_radius)
+        threshold = MIN_DISTANCE_COVALENT_RATIO * 2 * r_si
+        gap = threshold - 0.01  # just below
+
+        # Place second atom at (gap, 0, 0) in Cartesian → fractional = (gap/20, 0, 0)
+        s = Structure(
+            Lattice.cubic(20.0),
+            ["Si", "Si"],
+            [[0.0, 0.0, 0.0], [gap / 20.0, 0.0, 0.0]],
+        )
+        result = validate_interatomic_distances(s)
+        assert result.passed is False
+        assert result.severity == "hard"
+
+    def test_distance_exactly_at_threshold_passes(self):
+        """Atoms separated by exactly the threshold distance should pass.
+
+        The check is strict-less-than (d < threshold), so d == threshold passes.
+        """
+        from pymatgen.core import Element
+
+        r_si = float(Element("Si").atomic_radius)
+        threshold = MIN_DISTANCE_COVALENT_RATIO * 2 * r_si
+
+        s = Structure(
+            Lattice.cubic(20.0),
+            ["Si", "Si"],
+            [[0.0, 0.0, 0.0], [threshold / 20.0, 0.0, 0.0]],
+        )
+        result = validate_interatomic_distances(s)
+        assert result.passed is True
+
+    def test_distance_uses_periodic_boundaries(self):
+        """Two atoms far apart in fractional coords but close across the PBC.
+
+        In a 4 Å cubic cell, atoms at (0, 0, 0) and (0.95, 0, 0) are only
+        0.2 Å apart through the periodic boundary (4 - 3.8 = 0.2 Å).
+        That is well below any covalent-radius threshold → must fail.
+        """
+        s = Structure(
+            Lattice.cubic(4.0),
+            ["Si", "Si"],
+            [[0.0, 0.0, 0.0], [0.95, 0.0, 0.0]],
+        )
+        result = validate_interatomic_distances(s)
+        assert result.passed is False, (
+            "PBC should make these atoms ~0.2 Å apart, well below threshold"
+        )
+
+    def test_distance_different_element_pairs(self):
+        """Mixed elements use per-element covalent radii, not a single global value.
+
+        Fe (r_cov ≈ 1.25 Å) + O (r_cov ≈ 0.66 Å) → threshold ≈ 0.955 Å.
+        Place them 0.90 Å apart — must fail.  Then verify the message names
+        both elements.
+        """
+        from pymatgen.core import Element
+
+        r_fe = float(Element("Fe").atomic_radius)
+        r_o = float(Element("O").atomic_radius)
+        threshold = MIN_DISTANCE_COVALENT_RATIO * (r_fe + r_o)
+        gap = threshold - 0.05
+
+        s = Structure(
+            Lattice.cubic(20.0),
+            ["Fe", "O"],
+            [[0.0, 0.0, 0.0], [gap / 20.0, 0.0, 0.0]],
+        )
+        result = validate_interatomic_distances(s)
+        assert result.passed is False
+        assert "Fe" in result.message
+        assert "O" in result.message
+
+
+# ---------------------------------------------------------------------------
+# validate_coordination_sanity — 3 tests (soft flag, lower risk)
+# ---------------------------------------------------------------------------
+
+class TestCoordinationSanity:
+    def test_coordination_valid_structure(self):
+        """Diamond-cubic Si has CN=4 for both sites — should pass."""
+        si = _cubic_si()
+        result = validate_coordination_sanity(si)
+        assert result.passed is True
+        assert result.stage == "coordination_sanity"
+        assert result.severity == "soft"
+
+    def test_coordination_isolated_atom_flags(self):
+        """A single atom in a huge cell has CN=0 — soft flag expected."""
+        s = Structure(Lattice.cubic(50.0), ["He"], [[0.0, 0.0, 0.0]])
+        result = validate_coordination_sanity(s)
+        assert result.passed is False
+        assert "isolated" in result.message.lower() or "CN=0" in result.message
+
+    def test_coordination_severity_is_soft(self):
+        """Coordination check must always use soft severity, never hard."""
+        si = _cubic_si()
+        result = validate_coordination_sanity(si)
+        assert result.severity == "soft"
