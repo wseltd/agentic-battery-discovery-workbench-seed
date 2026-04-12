@@ -78,8 +78,9 @@ def test_crystal_system_case_insensitive():
 
 
 def test_unknown_system_raises_valueerror():
-    with pytest.raises(ValueError, match="Unknown crystal system"):
+    with pytest.raises(ValueError, match="Unknown crystal system") as exc_info:
         crystal_system_to_sg_range("rhombohedral")
+    assert "rhombohedral" in str(exc_info.value)
 
 
 # --- sg_number_to_crystal_system ---
@@ -101,12 +102,17 @@ def test_sg_to_system_sg230_cubic():
 
 
 def test_sg_to_system_invalid_raises():
-    with pytest.raises(ValueError, match="outside the valid range"):
+    with pytest.raises(ValueError, match="outside the valid range") as exc_info:
         sg_number_to_crystal_system(0)
-    with pytest.raises(ValueError, match="outside the valid range"):
+    assert "0" in str(exc_info.value)
+
+    with pytest.raises(ValueError, match="outside the valid range") as exc_info:
         sg_number_to_crystal_system(231)
-    with pytest.raises(ValueError, match="outside the valid range"):
+    assert "231" in str(exc_info.value)
+
+    with pytest.raises(ValueError, match="outside the valid range") as exc_info:
         sg_number_to_crystal_system(-5)
+    assert "-5" in str(exc_info.value)
 
 
 # --- is_p1 ---
