@@ -125,8 +125,15 @@ class TestFormalChargeFailure:
     def test_subsequent_stages_still_produce_results(self):
         mol = _mol("[Mg+2]")
         result = run_pipeline(mol)
-        assert isinstance(result.stage_results[1].result, StereocentreReport)
-        assert isinstance(result.stage_results[2].result, SaltStripResult)
+        sc = result.stage_results[1].result
+        assert isinstance(sc, StereocentreReport)
+        # Mg2+ is a single atom — no stereocentres
+        assert sc.has_stereocentres is False
+        ss = result.stage_results[2].result
+        assert isinstance(ss, SaltStripResult)
+        # Mg2+ is a single ionic fragment — salt_strip removes it entirely
+        assert ss.original_fragment_count == 1
+        assert ss.fragments_removed == 1
 
 
 # --- molecule with stereocentres --------------------------------------------
@@ -199,12 +206,16 @@ class TestReturnTypes:
     """Pipeline return types must match the documented contract."""
 
     def test_pipeline_result_type(self):
-        result = run_pipeline(_mol("C"))
+        mol = _mol("C")
+        result = run_pipeline(mol)
         assert isinstance(result, PipelineResult)
+        assert result.mol is mol
+        assert len(result.stage_results) == 3
 
     def test_stage_result_type(self):
         result = run_pipeline(_mol("C"))
-        for sr in result.stage_results:
+        expected = [(3, "formal_charge"), (4, "stereocentre"), (5, "salt_strip")]
+        for sr, (num, name) in zip(result.stage_results, expected):
             assert isinstance(sr, StageResult)
-            assert isinstance(sr.stage, int)
-            assert isinstance(sr.name, str)
+            assert sr.stage == num
+            assert sr.name == name
