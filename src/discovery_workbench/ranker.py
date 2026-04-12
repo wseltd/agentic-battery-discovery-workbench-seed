@@ -14,6 +14,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
+from discovery_workbench.crowding import compute_crowding_distance
 from discovery_workbench.pareto import non_dominated_sort
 
 logger = logging.getLogger(__name__)
@@ -73,42 +74,14 @@ def _crowding_distances(
 ) -> list[float]:
     """Compute crowding distance for each candidate in a single front.
 
-    Uses the NSGA-II algorithm: for each objective, sort the front members,
-    assign infinity to boundary points, and accumulate normalised neighbour
-    gaps scaled by the objective weight.
-
-    Returns a list aligned with *front* — distances[i] is the crowding
-    distance for front[i].
+    Delegates to :func:`discovery_workbench.crowding.compute_crowding_distance`
+    and converts the id-keyed dict back to a positional list aligned with *front*.
     """
-    n = len(front)
-    distances = [0.0] * n
-
-    if n <= 2:
-        return [float("inf")] * n
-
-    objectives = list(weights.keys())
-    for obj in objectives:
-        # Sort by this objective's score, tracking original position.
-        order = sorted(range(n), key=lambda i: front[i]["scores"][obj])
-        obj_min = front[order[0]]["scores"][obj]
-        obj_max = front[order[-1]]["scores"][obj]
-        span = obj_max - obj_min
-
-        distances[order[0]] = float("inf")
-        distances[order[-1]] = float("inf")
-
-        if span == 0.0:
-            continue
-
-        w = weights[obj]
-        for k in range(1, len(order) - 1):
-            gap = (
-                front[order[k + 1]]["scores"][obj]
-                - front[order[k - 1]]["scores"][obj]
-            )
-            distances[order[k]] += w * (gap / span)
-
-    return distances
+    if not front:
+        return []
+    objective_names = list(weights.keys())
+    cd_map = compute_crowding_distance(front, objective_names, weights)
+    return [cd_map[cand["candidate_id"]] for cand in front]
 
 
 # ---------------------------------------------------------------------------
