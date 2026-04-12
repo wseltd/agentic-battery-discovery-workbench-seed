@@ -91,9 +91,10 @@ class TestBadPrefix:
         with pytest.raises(ValueError, match="must start with"):
             parse_smarts_constraint("contains:[#6]")
 
-    def test_empty_string(self):
-        with pytest.raises(ValueError, match="must start with"):
+    def test_empty_string_raises_prefix_error(self):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("")
+        assert "must start with" in str(exc_info.value)
 
     def test_only_whitespace(self):
         with pytest.raises(ValueError, match="must start with"):
