@@ -2,6 +2,9 @@
 
 Thin wrappers around RDKit's QED and SA score functions that return
 structured PropertyScore results with evidence-level metadata.
+
+SA scores use fragment-contribution heuristics (Ertl & Schuffenhauer 2009),
+not retrosynthetic analysis — hence the HEURISTIC_ESTIMATED evidence level.
 """
 
 from __future__ import annotations
