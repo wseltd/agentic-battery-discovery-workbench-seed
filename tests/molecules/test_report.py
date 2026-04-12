@@ -269,6 +269,38 @@ def test_build_annex_roundtrip_all_fields():
     assert d["export_paths"]["sdf_dir"] == "out/sdf"
 
 
+def test_build_annex_rejects_wrong_validity_stats_type():
+    """Passing a plain dict instead of ValidityStats raises TypeError."""
+    with pytest.raises(TypeError) as exc_info:
+        _make_annex(validity_stats={"final_valid": 90})
+    assert "validity_stats must be a ValidityStats" in str(exc_info.value)
+    assert "got dict" in str(exc_info.value)
+
+
+def test_build_annex_rejects_non_dict_generator_config():
+    """Passing a non-dict generator_config raises TypeError."""
+    with pytest.raises(TypeError) as exc_info:
+        _make_annex(generator_config="reinvent4")
+    assert "generator_config must be a dict" in str(exc_info.value)
+    assert "got str" in str(exc_info.value)
+
+
+def test_build_annex_rejects_non_constraint_in_breakdown():
+    """Passing a plain dict in the constraint list raises TypeError."""
+    with pytest.raises(TypeError) as exc_info:
+        _make_annex(constraint_breakdown=[{"name": "MW"}])
+    assert "constraint_breakdown[0] must be a ConstraintResult" in str(exc_info.value)
+    assert "got dict" in str(exc_info.value)
+
+
+def test_build_annex_rejects_non_string_warning():
+    """Passing a non-string in heuristic_warnings raises TypeError."""
+    with pytest.raises(TypeError) as exc_info:
+        _make_annex(heuristic_warnings=[42])
+    assert "heuristic_warnings[0] must be a str" in str(exc_info.value)
+    assert "got int" in str(exc_info.value)
+
+
 def test_annex_asdict_serializable():
     """The annex dict must be JSON-serializable without custom encoders."""
     annex = _make_annex()

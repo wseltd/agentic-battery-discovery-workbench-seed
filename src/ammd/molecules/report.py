@@ -188,7 +188,44 @@ def build_molecule_annex(
     Returns
     -------
     MoleculeReportAnnex
+
+    Raises
+    ------
+    TypeError
+        If any argument has the wrong type.
     """
+    if not isinstance(generator_config, dict):
+        raise TypeError(
+            f"generator_config must be a dict, got {type(generator_config).__name__}"
+        )
+    if not isinstance(validity_stats, ValidityStats):
+        raise TypeError(
+            f"validity_stats must be a ValidityStats, got {type(validity_stats).__name__}"
+        )
+    if not isinstance(uniqueness_stats, UniquenessStats):
+        raise TypeError(
+            f"uniqueness_stats must be an UniquenessStats, got {type(uniqueness_stats).__name__}"
+        )
+    if not isinstance(novelty_stats, NoveltyStats):
+        raise TypeError(
+            f"novelty_stats must be a NoveltyStats, got {type(novelty_stats).__name__}"
+        )
+    if not isinstance(export_paths, ExportPaths):
+        raise TypeError(
+            f"export_paths must be an ExportPaths, got {type(export_paths).__name__}"
+        )
+    for i, cr in enumerate(constraint_breakdown):
+        if not isinstance(cr, ConstraintResult):
+            raise TypeError(
+                f"constraint_breakdown[{i}] must be a ConstraintResult, "
+                f"got {type(cr).__name__}"
+            )
+    warnings = heuristic_warnings if heuristic_warnings is not None else []
+    for i, w in enumerate(warnings):
+        if not isinstance(w, str):
+            raise TypeError(
+                f"heuristic_warnings[{i}] must be a str, got {type(w).__name__}"
+            )
     return MoleculeReportAnnex(
         generator_config=generator_config,
         validity_stats=validity_stats,
@@ -196,5 +233,5 @@ def build_molecule_annex(
         novelty_stats=novelty_stats,
         constraint_breakdown=constraint_breakdown,
         export_paths=export_paths,
-        heuristic_warnings=heuristic_warnings if heuristic_warnings is not None else [],
+        heuristic_warnings=warnings,
     )
