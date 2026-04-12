@@ -87,10 +87,21 @@ def test_unknown_system_raises_valueerror():
 
 
 def test_sg_to_system_boundary_values():
-    """First and last SG of each system must map correctly."""
-    for system, (lo, hi) in CRYSTAL_SYSTEM_SG_RANGES.items():
-        assert sg_number_to_crystal_system(lo) == system
-        assert sg_number_to_crystal_system(hi) == system
+    """Spot-check every boundary SG from the ticket list."""
+    assert sg_number_to_crystal_system(1) == "triclinic"
+    assert sg_number_to_crystal_system(2) == "triclinic"
+    assert sg_number_to_crystal_system(3) == "monoclinic"
+    assert sg_number_to_crystal_system(15) == "monoclinic"
+    assert sg_number_to_crystal_system(16) == "orthorhombic"
+    assert sg_number_to_crystal_system(74) == "orthorhombic"
+    assert sg_number_to_crystal_system(75) == "tetragonal"
+    assert sg_number_to_crystal_system(142) == "tetragonal"
+    assert sg_number_to_crystal_system(143) == "trigonal"
+    assert sg_number_to_crystal_system(167) == "trigonal"
+    assert sg_number_to_crystal_system(168) == "hexagonal"
+    assert sg_number_to_crystal_system(194) == "hexagonal"
+    assert sg_number_to_crystal_system(195) == "cubic"
+    assert sg_number_to_crystal_system(230) == "cubic"
 
 
 def test_sg_to_system_sg1_triclinic():
@@ -111,8 +122,8 @@ def test_sg_to_system_invalid_raises():
     assert "231" in str(exc_info.value)
 
     with pytest.raises(ValueError, match="outside the valid range") as exc_info:
-        sg_number_to_crystal_system(-5)
-    assert "-5" in str(exc_info.value)
+        sg_number_to_crystal_system(-1)
+    assert "-1" in str(exc_info.value)
 
 
 # --- is_p1 ---
