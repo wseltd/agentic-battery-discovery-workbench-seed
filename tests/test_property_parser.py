@@ -106,70 +106,84 @@ class TestUnknownProperty:
     """Unknown or misspelled property names raise ValueError."""
 
     def test_completely_unknown(self) -> None:
-        with pytest.raises(ValueError, match="Unknown property 'foo'"):
+        with pytest.raises(ValueError, match="Unknown property 'foo'") as exc_info:
             parse_property_constraint("foo<5")
+        assert "foo" in str(exc_info.value)
 
     def test_wrong_case(self) -> None:
         """Property names are case-sensitive: 'mw' != 'MW'."""
-        with pytest.raises(ValueError, match="Unknown property 'mw'"):
+        with pytest.raises(ValueError, match="Unknown property 'mw'") as exc_info:
             parse_property_constraint("mw<500")
+        assert "mw" in str(exc_info.value)
 
     def test_unknown_in_range(self) -> None:
-        with pytest.raises(ValueError, match="Unknown property 'XYZ'"):
+        with pytest.raises(ValueError, match="Unknown property 'XYZ'") as exc_info:
             parse_property_constraint("1<=XYZ<=10")
+        assert "XYZ" in str(exc_info.value)
 
 
 class TestMalformedTokens:
     """Tokens that don't match any expected form raise ValueError."""
 
     def test_empty_string(self) -> None:
-        with pytest.raises(ValueError, match="empty"):
+        with pytest.raises(ValueError, match="empty") as exc_info:
             parse_property_constraint("")
+        assert "empty" in str(exc_info.value).lower()
 
     def test_whitespace_only(self) -> None:
-        with pytest.raises(ValueError, match="empty"):
+        with pytest.raises(ValueError, match="empty") as exc_info:
             parse_property_constraint("   ")
+        assert "empty" in str(exc_info.value).lower()
 
     def test_no_operator(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("MW500")
+        assert "MW500" in str(exc_info.value)
 
     def test_double_operator(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("MW<<500")
+        assert "MW<<500" in str(exc_info.value)
 
     def test_missing_value(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("MW<")
+        assert "MW<" in str(exc_info.value)
 
     def test_missing_property(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("<500")
+        assert "<500" in str(exc_info.value)
 
     def test_range_missing_lower(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("<=MW<=500")
+        assert "<=MW<=500" in str(exc_info.value)
 
     def test_range_with_gt_operator(self) -> None:
         """Range form only supports <=, not >= or mixed operators."""
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("100>=MW>=50")
+        assert "100>=MW>=50" in str(exc_info.value)
 
     def test_just_a_number(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("500")
+        assert "500" in str(exc_info.value)
 
     def test_just_a_name(self) -> None:
-        with pytest.raises(ValueError, match="Malformed"):
+        with pytest.raises(ValueError, match="Malformed") as exc_info:
             parse_property_constraint("MW")
+        assert "MW" in str(exc_info.value)
 
 
 class TestRangeInversion:
     """Range where lo > hi is rejected by PropertyConstraint validation."""
 
     def test_inverted_range(self) -> None:
-        with pytest.raises(ValueError, match="min_val.*max_val"):
+        with pytest.raises(ValueError, match="min_val.*max_val") as exc_info:
             parse_property_constraint("500<=MW<=200")
+        assert "min_val" in str(exc_info.value)
 
 
 class TestNegativeValues:
