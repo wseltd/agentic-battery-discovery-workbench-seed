@@ -112,8 +112,10 @@ class TestBoundaryValidation:
 
     def test_min_greater_than_max_raises(self):
         mol = _mol_with_charge("C")
-        with pytest.raises(ValueError, match="min_charge.*must be <= max_charge"):
+        with pytest.raises(ValueError, match="min_charge.*must be <= max_charge") as exc_info:
             check_formal_charge(mol, min_charge=2, max_charge=-2)
+        assert "2" in str(exc_info.value)
+        assert "-2" in str(exc_info.value)
 
     def test_equal_min_max_allows_exact_charge(self):
         # Only charge=0 allowed
