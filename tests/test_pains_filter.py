@@ -76,8 +76,9 @@ def test_matched_filter_names_are_rdkit_canonical() -> None:
 
 def test_none_mol_raises_typeerror() -> None:
     """Passing None instead of a Mol must raise TypeError."""
-    with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+    with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
         run_pains_filter(None)
+    assert "Expected rdkit.Chem.Mol" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
