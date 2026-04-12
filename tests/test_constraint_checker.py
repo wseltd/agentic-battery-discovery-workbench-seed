@@ -196,5 +196,6 @@ class TestNullMolGuard:
 
     def test_none_mol_raises_value_error(self) -> None:
         checker = ConstraintChecker([])
-        with pytest.raises(ValueError, match="mol must not be None"):
+        with pytest.raises(ValueError, match="mol must not be None") as exc_info:
             checker.check(None, "invalid")
+        assert "invalid" in str(exc_info.value)
