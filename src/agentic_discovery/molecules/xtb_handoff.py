@@ -105,6 +105,13 @@ class XtbHandoffBuilder:
         ConformerGenerationError
             If neither ETKDG nor random-coordinate embedding succeeds.
         """
+        if not isinstance(mol, Chem.Mol):
+            raise TypeError(
+                f"mol must be an rdkit.Chem.Mol, got {type(mol).__name__}"
+            )
+        if mol.GetNumAtoms() == 0:
+            raise ValueError("mol has no atoms — cannot generate a conformer")
+
         warnings: list[str] = []
 
         mol_h = Chem.AddHs(mol)

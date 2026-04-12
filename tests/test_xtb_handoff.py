@@ -260,6 +260,25 @@ class TestConformerFallback:
 # ---------------------------------------------------------------------------
 
 
+class TestInputValidation:
+    """build_bundle rejects non-Mol and empty-Mol inputs at the boundary."""
+
+    def test_non_mol_raises_type_error(
+        self, builder: XtbHandoffBuilder
+    ) -> None:
+        with pytest.raises(TypeError, match="rdkit.Chem.Mol") as exc_info:
+            builder.build_bundle("not-a-mol")  # type: ignore[arg-type]
+        assert "str" in str(exc_info.value)
+
+    def test_empty_mol_raises_value_error(
+        self, builder: XtbHandoffBuilder
+    ) -> None:
+        empty = Chem.RWMol()  # valid Mol object with zero atoms
+        with pytest.raises(ValueError, match="no atoms") as exc_info:
+            builder.build_bundle(empty)
+        assert "conformer" in str(exc_info.value)
+
+
 class TestBenzene:
     def test_simple_molecule_benzene(
         self, benzene_bundle: HandoffBundle
