@@ -115,10 +115,7 @@ class XtbHandoffBuilder:
 
         xyz_content = self._export_xyz(mol_h)
         sdf_content = self._export_sdf(mol_h)
-        run_script = _RUN_SCRIPT_TEMPLATE.format(
-            charge=charge,
-            multiplicity=multiplicity,
-        )
+        run_script = self._generate_run_script(charge=charge, multiplicity=multiplicity)
 
         return HandoffBundle(
             smiles=smiles,
@@ -133,6 +130,25 @@ class XtbHandoffBuilder:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _generate_run_script(charge: int = 0, multiplicity: int = 1) -> str:
+        """Return a bash script string for xTB execution.
+
+        Parameters
+        ----------
+        charge : int
+            Molecular charge (default 0).
+        multiplicity : int
+            Spin multiplicity (default 1).
+
+        Returns
+        -------
+        str
+            Valid executable bash script with charge/multiplicity variables
+            and an xtb invocation line.
+        """
+        return _RUN_SCRIPT_TEMPLATE.format(charge=charge, multiplicity=multiplicity)
 
     def _embed(
         self,

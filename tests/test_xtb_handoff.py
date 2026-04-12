@@ -117,17 +117,18 @@ class TestRunScript:
     def test_run_script_contains_charge_placeholder(
         self, ethanol_bundle: HandoffBundle
     ) -> None:
-        assert "CHARGE=" in ethanol_bundle.run_script
+        assert "CHARGE=0" in ethanol_bundle.run_script
 
     def test_run_script_contains_multiplicity_placeholder(
         self, ethanol_bundle: HandoffBundle
     ) -> None:
-        assert "MULTIPLICITY=" in ethanol_bundle.run_script
+        assert "MULTIPLICITY=1" in ethanol_bundle.run_script
 
     def test_run_script_contains_user_confirm_comment(
         self, ethanol_bundle: HandoffBundle
     ) -> None:
         # The script must warn the user to verify charge/multiplicity.
+        assert "# USER" in ethanol_bundle.run_script
         assert "confirm" in ethanol_bundle.run_script.lower()
 
     def test_run_script_is_valid_bash_syntax(
@@ -143,6 +144,19 @@ class TestRunScript:
                 text=True,
             )
         assert result.returncode == 0, f"Bash syntax error: {result.stderr}"
+
+    def test_run_script_has_shebang(self, ethanol_bundle: HandoffBundle) -> None:
+        assert ethanol_bundle.run_script.startswith("#!/")
+
+    def test_run_script_contains_xtb_command(self, ethanol_bundle: HandoffBundle) -> None:
+        assert "xtb" in ethanol_bundle.run_script
+
+    def test_run_script_custom_charge_and_multiplicity(
+        self, builder: XtbHandoffBuilder, ethanol_mol: Chem.Mol
+    ) -> None:
+        bundle = builder.build_bundle(ethanol_mol, charge=-1, multiplicity=2)
+        assert "CHARGE=-1" in bundle.run_script
+        assert "MULTIPLICITY=2" in bundle.run_script
 
 
 # ---------------------------------------------------------------------------
