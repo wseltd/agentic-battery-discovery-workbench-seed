@@ -113,8 +113,8 @@ class XtbHandoffBuilder:
         smiles = Chem.MolToSmiles(mol)
         inchikey = inchi.MolToInchiKey(mol)
 
-        xyz_content = self._mol_to_xyz(mol_h)
-        sdf_content = Chem.MolToMolBlock(mol_h)
+        xyz_content = self._export_xyz(mol_h)
+        sdf_content = self._export_sdf(mol_h)
         run_script = _RUN_SCRIPT_TEMPLATE.format(
             charge=charge,
             multiplicity=multiplicity,
@@ -157,16 +157,20 @@ class XtbHandoffBuilder:
         )
 
     @staticmethod
-    def _mol_to_xyz(mol_h: Chem.Mol) -> str:
-        """Convert a molecule with a conformer to XYZ-format string."""
-        conf = mol_h.GetConformer()
-        atoms = mol_h.GetAtoms()
-        lines: list[str] = [str(mol_h.GetNumAtoms()), ""]
-        for atom in atoms:
-            pos = conf.GetAtomPosition(atom.GetIdx())
-            symbol = atom.GetSymbol()
-            lines.append(f"{symbol}  {pos.x: .6f}  {pos.y: .6f}  {pos.z: .6f}")
-        return "\n".join(lines) + "\n"
+    def _export_xyz(mol: Chem.Mol) -> str:
+        """Convert a molecule with an embedded conformer to XYZ-format string.
+
+        Uses RDKit's MolToXYZBlock for canonical XYZ output.
+        """
+        return Chem.MolToXYZBlock(mol)
+
+    @staticmethod
+    def _export_sdf(mol: Chem.Mol) -> str:
+        """Convert a molecule with an embedded conformer to SDF mol-block.
+
+        Uses RDKit's MolToMolBlock for V2000/V3000 interchange format.
+        """
+        return Chem.MolToMolBlock(mol)
 
 
 def build_bundle(
