@@ -6,6 +6,8 @@ and atom-count edge cases through the stage-function wrappers.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from pymatgen.core import Lattice, Structure
 
 from validation.stages import check_allowed_elements, check_atom_count
@@ -129,3 +131,16 @@ class TestCheckAtomCount:
         result = check_atom_count(s)
         assert result.passed is False
         assert "20" in result.message
+
+    def test_atom_count_zero_atoms_fails(self):
+        """Empty structure (0 atoms) is physically meaningless — must fail.
+
+        pymatgen refuses to create a 0-site Structure, so we use a mock
+        that reports len() == 0 to exercise the guard clause.
+        """
+        empty = MagicMock()
+        empty.__len__ = lambda self: 0
+        result = check_atom_count(empty)
+        assert result.passed is False
+        assert result.stage == "atom_count"
+        assert "0" in result.message
