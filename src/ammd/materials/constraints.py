@@ -1,18 +1,27 @@
 """Materials constraint parsing for inorganic materials discovery requests.
 
 Parses natural-language constraint text into a structured MaterialsConstraints
-dataclass.  Parsing is regex-based and heuristic — it handles common phrasings
-but is not a full NLP pipeline.
+dataclass.  Delegates to the single-concern sub-parsers in this package
+(parse_elements, parse_stoichiometry, parse_space_group, parse_numeric) and
+assembles their results.  Parsing is regex-based and heuristic — it handles
+common phrasings but is not a full NLP pipeline.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import logging
-import re
 
 from pymatgen.core.periodic_table import Element
 from pymatgen.symmetry.groups import SpaceGroup
+
+from ammd.materials.parse_elements import parse_element_list
+from ammd.materials.parse_numeric import parse_max_atoms, parse_stability_threshold
+from ammd.materials.parse_space_group import (
+    CRYSTAL_SYSTEM_RANGES,
+    parse_space_group,
+)
+from ammd.materials.parse_stoichiometry import parse_stoichiometry_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +52,22 @@ for _sg_num in range(1, 231):
     except ValueError:
         logger.warning("pymatgen has no SpaceGroup for number %d", _sg_num)
 
-# Crystal-system name → inclusive (min, max) space-group-number range.
-_CRYSTAL_SYSTEM_RANGES: dict[str, tuple[int, int]] = {
-    "triclinic": (1, 2),
-    "monoclinic": (3, 15),
-    "orthorhombic": (16, 74),
-    "tetragonal": (75, 142),
-    "trigonal": (143, 167),
-    "hexagonal": (168, 194),
-    "cubic": (195, 230),
-}
 
-# Regex for a single element symbol: uppercase letter + optional lowercase
-_ELEMENT_RE = r"[A-Z][a-z]?"
+def crystal_system_to_sg_range(system: str) -> tuple[int, int] | None:
+    """Map a crystal system name to its inclusive space-group number range.
+
+    Thin wrapper around CRYSTAL_SYSTEM_RANGES from parse_space_group —
+    exists as a named function so downstream callers (T028+) have a
+    stable callable interface rather than reaching into the dict directly.
+
+    Args:
+        system: Lowercase crystal system name (e.g. ``"cubic"``).
+
+    Returns:
+        ``(low, high)`` inclusive SG range, or ``None`` if *system* is
+        not a recognised crystal system name.
+    """
+    return CRYSTAL_SYSTEM_RANGES.get(system)
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +108,12 @@ class MaterialsConstraints:
 
 
 # ---------------------------------------------------------------------------
-# Parser
+# Parser — wires sub-parsers together, no parsing logic of its own
 # ---------------------------------------------------------------------------
+
+_MAX_ATOMS_DEFAULT = 20
+_STABILITY_THRESHOLD_DEFAULT = 0.1
+
 
 def parse_materials_constraints(text: str) -> MaterialsConstraints:
     """Parse natural-language constraint text into a MaterialsConstraints.
@@ -105,6 +121,12 @@ def parse_materials_constraints(text: str) -> MaterialsConstraints:
     Heuristic regex parser — handles common phrasings but is not exhaustive.
     Unrecognised tokens are silently skipped so that downstream callers
     always receive a valid (possibly default) result.
+
+    Delegates to single-concern sub-parsers:
+    - ``parse_element_list`` for allowed/excluded elements and chemistry scope
+    - ``parse_stoichiometry_pattern`` for abstract formulas
+    - ``parse_space_group`` for SG numbers, symbols, and crystal systems
+    - ``parse_max_atoms`` / ``parse_stability_threshold`` for numeric limits
 
     Args:
         text: Free-form constraint text, e.g. ``"cubic perovskites ABO3 in
@@ -120,193 +142,28 @@ def parse_materials_constraints(text: str) -> MaterialsConstraints:
     if not text or not text.strip():
         return constraints
 
-    _parse_stability_threshold(text, constraints)
-    _parse_max_atoms(text, constraints)
-    _parse_space_group(text, constraints)
-    _parse_crystal_system(text, constraints)
-    _parse_stoichiometry(text, constraints)
-    _parse_elements(text, constraints)
-    _parse_excluded_elements(text, constraints)
-    _parse_chemistry_scope(text, constraints)
+    # Numeric constraints
+    constraints.max_atoms = parse_max_atoms(text, default=_MAX_ATOMS_DEFAULT)
+    constraints.stability_threshold_ev = parse_stability_threshold(
+        text, default=_STABILITY_THRESHOLD_DEFAULT,
+    )
+
+    # Space group and crystal system
+    sg_number, crystal_system = parse_space_group(text, SG_SYMBOL_TO_NUMBER)
+    constraints.space_group_number = sg_number
+    constraints.crystal_system = crystal_system
+
+    # Resolve crystal system → SG range only when no explicit SG number
+    if crystal_system is not None and sg_number is None:
+        constraints.space_group_range = crystal_system_to_sg_range(crystal_system)
+
+    # Stoichiometry pattern
+    constraints.stoichiometry_pattern = parse_stoichiometry_pattern(text)
+
+    # Elements, exclusions, and chemistry scope
+    allowed, excluded, scope = parse_element_list(text, ALLOWED_ELEMENTS)
+    constraints.allowed_elements = allowed
+    constraints.excluded_elements = excluded
+    constraints.chemistry_scope = scope
 
     return constraints
-
-
-# ---------------------------------------------------------------------------
-# Private parse helpers — one concern each
-# ---------------------------------------------------------------------------
-
-def _parse_stability_threshold(text: str, c: MaterialsConstraints) -> None:
-    """Extract stability threshold in eV/atom."""
-    # Matches: "stable within 0.05 eV/atom", "stability < 0.1 eV",
-    #          "0.05 eV/atom stability", "threshold 0.05 eV"
-    m = re.search(
-        r"(?:stable\s+within|stability\s*(?:threshold)?[<≤:=\s]+|"
-        r"threshold\s*[<≤:=\s]+)"
-        r"\s*(\d+(?:\.\d+)?)\s*ev",
-        text,
-        re.IGNORECASE,
-    )
-    if m:
-        c.stability_threshold_ev = float(m.group(1))
-        return
-    # "0.05 eV/atom" standalone
-    m = re.search(r"(\d+(?:\.\d+)?)\s*ev/atom", text, re.IGNORECASE)
-    if m:
-        c.stability_threshold_ev = float(m.group(1))
-
-
-def _parse_max_atoms(text: str, c: MaterialsConstraints) -> None:
-    """Extract maximum atom count."""
-    # "<=20 atoms", "≤20 atoms", "up to 30 atoms", "at most 20 atoms",
-    # "max 20 atoms", "maximum 20 atoms"
-    m = re.search(
-        r"(?:[<≤]=?\s*|up\s+to\s+|at\s+most\s+|max(?:imum)?\s+)"
-        r"(\d+)\s*atoms?",
-        text,
-        re.IGNORECASE,
-    )
-    if m:
-        c.max_atoms = int(m.group(1))
-
-
-def _parse_space_group(text: str, c: MaterialsConstraints) -> None:
-    """Extract space group number from explicit number or Hermann-Mauguin symbol."""
-    # "space group 62", "SG 62", "spacegroup 62"
-    m = re.search(
-        r"space\s*group\s+(\d+)|SG\s+(\d+)",
-        text,
-        re.IGNORECASE,
-    )
-    if m:
-        num = int(m.group(1) or m.group(2))
-        if 1 <= num <= 230:
-            c.space_group_number = num
-        else:
-            logger.warning(
-                "Space group number %d out of range 1–230, ignored", num
-            )
-        return
-
-    # Hermann-Mauguin symbol, e.g. "Fm-3m", "P21/c", "Pnma".
-    # Sort longest-first so "Fm-3m" matches before "Fm-3".
-    for symbol in sorted(SG_SYMBOL_TO_NUMBER, key=len, reverse=True):
-        if symbol in text:
-            c.space_group_number = SG_SYMBOL_TO_NUMBER[symbol]
-            return
-
-
-def _parse_crystal_system(text: str, c: MaterialsConstraints) -> None:
-    """Extract crystal system name and set the corresponding SG range."""
-    lower = text.lower()
-    for system, sg_range in _CRYSTAL_SYSTEM_RANGES.items():
-        if system in lower:
-            c.crystal_system = system
-            # Only set SG range if no explicit SG number was given
-            if c.space_group_number is None:
-                c.space_group_range = sg_range
-            return
-
-
-def _parse_stoichiometry(text: str, c: MaterialsConstraints) -> None:
-    """Extract abstract stoichiometry pattern like ABO3 or AB2O4.
-
-    Matches uppercase-letter tokens with digits that look like stoichiometry
-    rather than element lists.  We require at least one digit to distinguish
-    from plain element symbols.
-    """
-    # Matches: ABO3, AB2O4, A2B2O7, etc.
-    m = re.search(r"\b([A-Z][A-Z0-9]{2,})\b", text)
-    if m:
-        candidate = m.group(1)
-        # Must contain at least one digit and at least two distinct uppercase
-        # letters to look like a stoichiometry pattern
-        if re.search(r"\d", candidate) and len(set(re.findall(r"[A-Z]", candidate))) >= 2:
-            c.stoichiometry_pattern = candidate
-
-
-def _parse_elements(text: str, c: MaterialsConstraints) -> None:
-    """Extract allowed element list from hyphenated, comma-separated, or natural-language forms."""
-    # Hyphenated: "Li-Fe-P-O", "in Li-Fe-P-O"
-    m = re.search(
-        r"(?:in\s+|from\s+|containing\s+|elements?\s+)?"
-        r"(" + _ELEMENT_RE + r"(?:\s*-\s*" + _ELEMENT_RE + r"){2,})",
-        text,
-    )
-    if m:
-        elements = re.findall(_ELEMENT_RE, m.group(1))
-        valid = [e for e in elements if e in ALLOWED_ELEMENTS]
-        if valid:
-            c.allowed_elements = valid
-            return
-
-    # Comma-separated: "Li, Fe, P, O" or "Li,Fe,P,O"
-    m = re.search(
-        r"(?:elements?\s*[:=]?\s*|containing\s+|from\s+|in\s+|with\s+)"
-        r"(" + _ELEMENT_RE + r"(?:\s*,\s*" + _ELEMENT_RE + r")+)",
-        text,
-    )
-    if m:
-        elements = re.findall(_ELEMENT_RE, m.group(1))
-        valid = [e for e in elements if e in ALLOWED_ELEMENTS]
-        if valid:
-            c.allowed_elements = valid
-            return
-
-    # Natural language: "containing lithium, iron, phosphorus and oxygen"
-    # Map common element names to symbols
-    name_map = _build_element_name_map()
-    lower = text.lower()
-    found: list[str] = []
-    for name, symbol in name_map.items():
-        if name in lower and symbol in ALLOWED_ELEMENTS:
-            found.append(symbol)
-    if len(found) >= 2:
-        c.allowed_elements = found
-
-
-def _parse_excluded_elements(text: str, c: MaterialsConstraints) -> None:
-    """Extract excluded elements from 'exclude X, Y' or 'without X, Y' patterns."""
-    m = re.search(
-        r"(?:exclud(?:e|ing)|without|no)\s+"
-        r"(" + _ELEMENT_RE + r"(?:[\s,]+(?:and\s+)?" + _ELEMENT_RE + r")*)",
-        text,
-        re.IGNORECASE,
-    )
-    if m:
-        elements = re.findall(_ELEMENT_RE, m.group(1))
-        valid = [e for e in elements if e in ALLOWED_ELEMENTS or e in _EXCLUDED_SYMBOLS]
-        if valid:
-            c.excluded_elements = valid
-
-
-def _parse_chemistry_scope(text: str, c: MaterialsConstraints) -> None:
-    """Extract chemistry scope keywords like 'oxides', 'nitrides', etc."""
-    scope_keywords = [
-        "oxides", "nitrides", "sulfides", "carbides", "halides",
-        "fluorides", "chlorides", "bromides", "iodides",
-        "borides", "phosphides", "silicides", "selenides",
-        "tellurides", "intermetallics", "perovskites",
-    ]
-    lower = text.lower()
-    found = [kw for kw in scope_keywords if kw in lower]
-    if found:
-        c.chemistry_scope = " ".join(found)
-
-
-# Built once at module level — not per call (standard §5/§15)
-_ELEMENT_NAME_MAP: dict[str, str] | None = None
-
-
-def _build_element_name_map() -> dict[str, str]:
-    """Lazy-build a lowercase element-name → symbol map.
-
-    Cached in module state so the iteration over Element happens only once.
-    """
-    global _ELEMENT_NAME_MAP  # noqa: PLW0603
-    if _ELEMENT_NAME_MAP is None:
-        _ELEMENT_NAME_MAP = {}
-        for el in Element:
-            if el.Z <= 83:
-                _ELEMENT_NAME_MAP[el.long_name.lower()] = el.symbol
-    return _ELEMENT_NAME_MAP
