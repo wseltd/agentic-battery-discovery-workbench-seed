@@ -82,8 +82,8 @@ def test_natural_language_element_names():
 
 def test_natural_language_single_name_returns_none():
     """A single element name should not trigger — too ambiguous."""
-    allowed, _, _ = parse_element_list("contains iron", ALLOWED_ELEMENTS)
-    assert allowed is None
+    allowed, excluded, scope = parse_element_list("contains iron", ALLOWED_ELEMENTS)
+    assert (allowed, excluded, scope) == (None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -170,5 +170,5 @@ def test_combined_allowed_excluded_scope():
 
 def test_all_symbols_invalid_returns_none():
     """If every symbol in a hyphenated list is invalid, return None."""
-    allowed, _, _ = parse_element_list("in Xx-Yy-Zz", ALLOWED_ELEMENTS)
-    assert allowed is None
+    allowed, excluded, scope = parse_element_list("in Xx-Yy-Zz", ALLOWED_ELEMENTS)
+    assert (allowed, excluded, scope) == (None, None, None)
