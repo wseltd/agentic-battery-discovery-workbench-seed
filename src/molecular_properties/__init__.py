@@ -22,8 +22,14 @@ if TYPE_CHECKING:
     from .molecular_weight import calc_molecular_weight as calc_molecular_weight
     from .rotatable_bonds import calc_rotatable_bonds as calc_rotatable_bonds
     from .tpsa import calc_tpsa as calc_tpsa
+    from workbench.molecules.property_scores import (
+        PropertyScore as PropertyScore,
+        compute_qed as compute_qed,
+        compute_sa_score as compute_sa_score,
+    )
 
 __all__ = [
+    "PropertyScore",
     "calc_aromatic_ring_count",
     "calc_clogp",
     "calc_hba",
@@ -33,10 +39,13 @@ __all__ = [
     "calc_ring_count",
     "calc_rotatable_bonds",
     "calc_tpsa",
+    "compute_qed",
+    "compute_sa_score",
 ]
 
 # Map each public name to (submodule, attribute)
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "PropertyScore": ("workbench.molecules.property_scores", "PropertyScore"),
     "calc_aromatic_ring_count": (".atom_and_ring_counts", "calc_aromatic_ring_count"),
     "calc_clogp": (".clogp", "calc_clogp"),
     "calc_hba": (".hydrogen_bonds", "calc_hba"),
@@ -46,6 +55,8 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "calc_ring_count": (".atom_and_ring_counts", "calc_ring_count"),
     "calc_rotatable_bonds": (".rotatable_bonds", "calc_rotatable_bonds"),
     "calc_tpsa": (".tpsa", "calc_tpsa"),
+    "compute_qed": ("workbench.molecules.property_scores", "compute_qed"),
+    "compute_sa_score": ("workbench.molecules.property_scores", "compute_sa_score"),
 }
 
 
