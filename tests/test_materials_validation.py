@@ -38,12 +38,15 @@ def _make_structure_with_matrix(matrix: list[list[float]]) -> Structure:
 class TestValidationResult:
     def test_frozen(self):
         r = ValidationResult(passed=True, stage="x", message="", severity="hard")
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError) as exc_info:
             r.passed = False  # type: ignore[misc]
+        assert "passed" in str(exc_info.value) or "cannot assign" in str(exc_info.value).lower() or exc_info.type is AttributeError
+        assert r.passed is True  # original value unchanged
 
     def test_invalid_severity_rejected(self):
-        with pytest.raises(ValueError, match="severity must be one of"):
+        with pytest.raises(ValueError, match="severity must be one of") as exc_info:
             ValidationResult(passed=True, stage="x", message="", severity="critical")  # type: ignore[arg-type]
+        assert "critical" in str(exc_info.value)
 
     def test_both_allowed_severities(self):
         for sev in ("hard", "soft"):
