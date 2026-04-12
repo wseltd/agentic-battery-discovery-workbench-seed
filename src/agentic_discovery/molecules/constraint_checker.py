@@ -241,34 +241,34 @@ class ConstraintChecker:
             reason=reason,
         )
 
-    def check(self, smiles: str) -> ConstraintResult:
+    def check(self, mol: Chem.Mol, smiles: str) -> ConstraintResult:
         """Evaluate all constraints against a molecule.
+
+        The caller is responsible for parsing the SMILES into a Mol object.
+        This method does not modify *mol* or filter molecules — it only
+        reports pass/fail for each constraint.
 
         Parameters
         ----------
+        mol:
+            RDKit Mol object for the molecule.
         smiles:
-            SMILES string of the molecule to check.
+            SMILES string (used for reporting, not re-parsed).
 
         Returns
         -------
         ConstraintResult
             Aggregated result with per-constraint details.
+
+        Raises
+        ------
+        ValueError
+            If *mol* is None.
         """
-        mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            return ConstraintResult(
-                smiles=smiles,
-                all_satisfied=False,
-                results=[
-                    SingleConstraintResult(
-                        constraint_name="parse",
-                        operator="valid",
-                        target_value=smiles,
-                        actual_value=None,
-                        passed=False,
-                        reason=f"Cannot parse SMILES: {smiles}",
-                    )
-                ],
+            raise ValueError(
+                f"mol must not be None (SMILES: {smiles}). "
+                "The caller must provide a valid RDKit Mol object."
             )
 
         results: list[SingleConstraintResult] = []

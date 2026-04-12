@@ -1,6 +1,6 @@
 """Tests for molecular constraint checking.
 
-Uses aspirin (C1=CC=CC=C1C(=O)OC(=O)C, MW ~180.16, cLogP ~1.24)
+Uses aspirin (CC(=O)Oc1ccccc1C(=O)O, MW ~180.16, cLogP ~1.24)
 as the primary test molecule because its properties are well-known
 and it contains aromatic rings (useful for SMARTS tests).
 """
@@ -10,11 +10,13 @@ from __future__ import annotations
 import logging
 
 import pytest
+from rdkit import Chem
 
 from agentic_discovery.molecules.constraint_checker import ConstraintChecker
 
-# Aspirin SMILES — MW ~180.16, cLogP ~1.24, HBD 0, HBA 4
+# Aspirin SMILES — MW ~180.16, cLogP ~1.24, HBD 1, HBA 4
 ASPIRIN = "CC(=O)Oc1ccccc1C(=O)O"
+ASPIRIN_MOL = Chem.MolFromSmiles(ASPIRIN)
 
 
 class TestMolecularWeightRange:
@@ -25,7 +27,7 @@ class TestMolecularWeightRange:
             {"type": "numeric", "property": "molecular_weight", "operator": ">=", "value": 100.0},
             {"type": "numeric", "property": "molecular_weight", "operator": "<=", "value": 300.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
         assert all(r.passed for r in result.results)
 
@@ -34,7 +36,7 @@ class TestMolecularWeightRange:
             {"type": "numeric", "property": "molecular_weight", "operator": ">=", "value": 200.0},
             {"type": "numeric", "property": "molecular_weight", "operator": "<=", "value": 300.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         # The >= 200 constraint should fail (aspirin MW ~180)
         mw_lower = result.results[0]
@@ -49,7 +51,7 @@ class TestClogpBounds:
         checker = ConstraintChecker([
             {"type": "numeric", "property": "clogp", "operator": "<=", "value": 5.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
 
     def test_clogp_lower_bound_only(self) -> None:
@@ -57,7 +59,7 @@ class TestClogpBounds:
         checker = ConstraintChecker([
             {"type": "numeric", "property": "clogp", "operator": ">=", "value": 3.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         assert result.results[0].reason is not None
 
@@ -70,7 +72,7 @@ class TestSmartsConstraints:
         checker = ConstraintChecker([
             {"type": "smarts", "pattern": "c1ccccc1", "mode": "required"},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
 
     def test_smarts_required_absent_fails(self) -> None:
@@ -78,7 +80,7 @@ class TestSmartsConstraints:
         checker = ConstraintChecker([
             {"type": "smarts", "pattern": "[#7]", "mode": "required"},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         assert result.results[0].reason is not None
         assert "not found" in result.results[0].reason
@@ -88,7 +90,7 @@ class TestSmartsConstraints:
         checker = ConstraintChecker([
             {"type": "smarts", "pattern": "c1ccccc1", "mode": "forbidden"},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         assert result.results[0].reason is not None
         assert "present" in result.results[0].reason
@@ -98,7 +100,7 @@ class TestSmartsConstraints:
         checker = ConstraintChecker([
             {"type": "smarts", "pattern": "[#7]", "mode": "forbidden"},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
 
     def test_invalid_smarts_logs_warning_and_fails(
@@ -108,7 +110,7 @@ class TestSmartsConstraints:
             {"type": "smarts", "pattern": "[INVALID", "mode": "required"},
         ])
         with caplog.at_level(logging.WARNING):
-            result = checker.check(ASPIRIN)
+            result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         assert result.results[0].passed is False
         assert result.results[0].reason is not None
@@ -124,7 +126,7 @@ class TestAllSatisfiedDerivation:
             {"type": "numeric", "property": "molecular_weight", "operator": ">=", "value": 100.0},
             {"type": "numeric", "property": "clogp", "operator": "<=", "value": 5.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
 
     def test_one_constraint_failed_sets_all_satisfied_false(self) -> None:
@@ -132,7 +134,7 @@ class TestAllSatisfiedDerivation:
             {"type": "numeric", "property": "molecular_weight", "operator": ">=", "value": 100.0},
             {"type": "numeric", "property": "clogp", "operator": ">=", "value": 5.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is False
         # Exactly one should fail
         passed_count = sum(1 for r in result.results if r.passed)
@@ -140,7 +142,7 @@ class TestAllSatisfiedDerivation:
 
     def test_empty_constraints_returns_all_satisfied(self) -> None:
         checker = ConstraintChecker([])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
         assert result.results == []
 
@@ -153,7 +155,7 @@ class TestHbdBoundary:
         checker = ConstraintChecker([
             {"type": "numeric", "property": "hbd", "operator": "<=", "value": 1},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
         assert result.results[0].actual_value == 1
 
@@ -168,7 +170,7 @@ class TestCombinedConstraints:
             {"type": "numeric", "property": "clogp", "operator": "<=", "value": 5.0},
             {"type": "numeric", "property": "hbd", "operator": "<=", "value": 5},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.all_satisfied is True
         assert len(result.results) == 4
 
@@ -181,9 +183,18 @@ class TestResultContents:
             {"type": "numeric", "property": "molecular_weight", "operator": ">=", "value": 100.0},
             {"type": "numeric", "property": "clogp", "operator": "<=", "value": 5.0},
         ])
-        result = checker.check(ASPIRIN)
+        result = checker.check(ASPIRIN_MOL, ASPIRIN)
         assert result.smiles == ASPIRIN
         for r in result.results:
             assert r.actual_value is not None
             assert isinstance(r.actual_value, (int, float))
             assert r.constraint_name in ("molecular_weight", "clogp")
+
+
+class TestNullMolGuard:
+    """check() must reject None mol with a clear error."""
+
+    def test_none_mol_raises_value_error(self) -> None:
+        checker = ConstraintChecker([])
+        with pytest.raises(ValueError, match="mol must not be None"):
+            checker.check(None, "invalid")
