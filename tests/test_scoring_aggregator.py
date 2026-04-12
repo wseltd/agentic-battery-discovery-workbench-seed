@@ -24,7 +24,7 @@ def _mol(
     smiles: str = "CCO",
     pains_pass: bool = True,
     property_score: float = 0.5,
-    novelty_penalty: float = 0.5,
+    novelty_score: float = 0.5,
     diversity_reward: float = 0.5,
 ) -> dict[str, object]:
     """Build a minimal molecule dict for testing."""
@@ -32,7 +32,7 @@ def _mol(
         "smiles": smiles,
         "pains_pass": pains_pass,
         "property_score": property_score,
-        "novelty_penalty": novelty_penalty,
+        "novelty_score": novelty_score,
         "diversity_reward": diversity_reward,
     }
 
@@ -42,14 +42,14 @@ class TestCompositeScoreWithinZeroOne:
 
     def test_composite_score_within_zero_one(self) -> None:
         results = score_molecules(
-            [_mol(property_score=1.0, novelty_penalty=1.0, diversity_reward=1.0)],
+            [_mol(property_score=1.0, novelty_score=1.0, diversity_reward=1.0)],
             ScoringWeights(),
         )
         assert 0.0 <= results[0].composite_score <= 1.0
 
     def test_composite_score_at_lower_bound(self) -> None:
         results = score_molecules(
-            [_mol(property_score=0.0, novelty_penalty=0.0, diversity_reward=0.0)],
+            [_mol(property_score=0.0, novelty_score=0.0, diversity_reward=0.0)],
             ScoringWeights(),
         )
         assert results[0].composite_score >= 0.0
@@ -60,14 +60,14 @@ class TestPainsClamping:
 
     def test_pains_fail_clamps_score_to_zero(self) -> None:
         results = score_molecules(
-            [_mol(pains_pass=False, property_score=1.0, novelty_penalty=1.0, diversity_reward=1.0)],
+            [_mol(pains_pass=False, property_score=1.0, novelty_score=1.0, diversity_reward=1.0)],
             ScoringWeights(),
         )
         assert results[0].composite_score == 0.0
 
     def test_pains_pass_true_does_not_clamp(self) -> None:
         results = score_molecules(
-            [_mol(pains_pass=True, property_score=0.8, novelty_penalty=0.6, diversity_reward=0.7)],
+            [_mol(pains_pass=True, property_score=0.8, novelty_score=0.6, diversity_reward=0.7)],
             ScoringWeights(),
         )
         assert results[0].composite_score > 0.0
@@ -100,12 +100,15 @@ class TestNanHandling:
 
     def test_nan_component_treated_as_zero(self) -> None:
         results = score_molecules(
-            [_mol(property_score=float("nan"), novelty_penalty=0.8, diversity_reward=0.8)],
+            [_mol(property_score=float("nan"), novelty_score=0.8, diversity_reward=0.8)],
             ScoringWeights(),
         )
         # NaN property_score → 0, so composite should still be finite and valid
         assert math.isfinite(results[0].composite_score)
         assert results[0].component_scores["property_score"] == 0.0
+        assert "pains_penalty" in results[0].component_scores
+        assert "novelty_score" in results[0].component_scores
+        assert "diversity_reward" in results[0].component_scores
 
 
 class TestSorting:
@@ -113,9 +116,9 @@ class TestSorting:
 
     def test_results_sorted_descending_by_composite(self) -> None:
         mols = [
-            _mol(smiles="A", property_score=0.1, novelty_penalty=0.1, diversity_reward=0.1),
-            _mol(smiles="B", property_score=0.9, novelty_penalty=0.9, diversity_reward=0.9),
-            _mol(smiles="C", property_score=0.5, novelty_penalty=0.5, diversity_reward=0.5),
+            _mol(smiles="A", property_score=0.1, novelty_score=0.1, diversity_reward=0.1),
+            _mol(smiles="B", property_score=0.9, novelty_score=0.9, diversity_reward=0.9),
+            _mol(smiles="C", property_score=0.5, novelty_score=0.5, diversity_reward=0.5),
         ]
         results = score_molecules(mols, ScoringWeights())
         scores = [r.composite_score for r in results]
@@ -129,15 +132,15 @@ class TestWeightBehaviour:
 
     def test_equal_weights_equal_contribution(self) -> None:
         """With equal weights and pains_pass=True, each component contributes equally."""
-        mol = _mol(property_score=1.0, novelty_penalty=0.0, diversity_reward=0.0)
+        mol = _mol(property_score=1.0, novelty_score=0.0, diversity_reward=0.0)
         results = score_molecules([mol], ScoringWeights(1.0, 1.0, 1.0, 1.0))
-        # property=1.0, pains_pass_contribution=1.0, novelty=0.0, diversity=0.0
-        # weighted sum = 1+1+0+0 = 2, total_weight = 4, composite = 0.5
+        # property=1.0, pains_penalty_contribution=1.0, novelty=0.0, diversity=0.0
+        # weighted_sum = 1+1+0+0 = 2, total_weight = 4, composite = 0.5
         assert results[0].composite_score == pytest.approx(0.5)
 
     def test_zero_weight_excludes_component(self) -> None:
         """A zero-weighted component must not affect the composite."""
-        mol = _mol(property_score=0.0, novelty_penalty=1.0, diversity_reward=1.0)
+        mol = _mol(property_score=0.0, novelty_score=1.0, diversity_reward=1.0)
         # With property and pains weights zeroed, only novelty and diversity matter
         results = score_molecules(
             [mol],
@@ -147,8 +150,8 @@ class TestWeightBehaviour:
 
     def test_custom_weights_shift_ranking(self) -> None:
         """Changing weights must change which molecule ranks first."""
-        mol_a = _mol(smiles="A", property_score=1.0, novelty_penalty=0.0, diversity_reward=0.0)
-        mol_b = _mol(smiles="B", property_score=0.0, novelty_penalty=1.0, diversity_reward=0.0)
+        mol_a = _mol(smiles="A", property_score=1.0, novelty_score=0.0, diversity_reward=0.0)
+        mol_b = _mol(smiles="B", property_score=0.0, novelty_score=1.0, diversity_reward=0.0)
 
         # Property-heavy weights → A wins
         results_prop = score_molecules(
@@ -178,7 +181,7 @@ class TestSingleMolecule:
 
     def test_single_molecule_scores_correctly(self) -> None:
         results = score_molecules(
-            [_mol(property_score=0.6, novelty_penalty=0.4, diversity_reward=0.8)],
+            [_mol(property_score=0.6, novelty_score=0.4, diversity_reward=0.8)],
             ScoringWeights(1.0, 1.0, 1.0, 1.0),
         )
         assert len(results) == 1
@@ -193,7 +196,7 @@ class TestAggregatorClass:
 
     def test_aggregator_delegates_to_score_molecules(self) -> None:
         agg = MolecularScoringAggregator(ScoringWeights())
-        results = agg.score([_mol()])
+        results = agg.score_molecules([_mol()])
         assert len(results) == 1
         assert results[0].composite_score > 0.0
 

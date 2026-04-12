@@ -123,7 +123,7 @@ def score_molecules(
     molecules:
         Each dict must contain at minimum ``"smiles"`` (str),
         ``"pains_pass"`` (bool), and zero or more component scores
-        keyed as ``"property_score"``, ``"novelty_penalty"``,
+        keyed as ``"property_score"``, ``"novelty_score"``,
         ``"diversity_reward"``.
     weights:
         Relative importance of each component.
@@ -147,11 +147,12 @@ def score_molecules(
 
         components: dict[str, float] = {}
         raw_property = _safe_score(float(mol.get("property_score", 0.0)))  # type: ignore[arg-type]
-        raw_novelty = _safe_score(float(mol.get("novelty_penalty", 0.0)))  # type: ignore[arg-type]
+        raw_novelty = _safe_score(float(mol.get("novelty_score", 0.0)))  # type: ignore[arg-type]
         raw_diversity = _safe_score(float(mol.get("diversity_reward", 0.0)))  # type: ignore[arg-type]
 
         components["property_score"] = raw_property
-        components["novelty_penalty"] = raw_novelty
+        components["pains_penalty"] = 1.0 if pains_pass else 0.0
+        components["novelty_score"] = raw_novelty
         components["diversity_reward"] = raw_diversity
 
         # Weighted sum, normalised by total active weight.
@@ -205,7 +206,7 @@ class MolecularScoringAggregator:
         validate_weights(weights)
         self.weights = weights
 
-    def score(
+    def score_molecules(
         self,
         molecules: list[dict[str, object]],
     ) -> list[ScoredMolecule]:
