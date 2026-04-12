@@ -77,12 +77,14 @@ class TestWeightValidation:
     """validate_weights must reject negative and all-zero configurations."""
 
     def test_all_zero_weights_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="All weights are zero"):
+        with pytest.raises(ValueError, match="All weights are zero") as exc_info:
             validate_weights(ScoringWeights(0.0, 0.0, 0.0, 0.0))
+        assert "at least one weight must be positive" in str(exc_info.value)
 
     def test_negative_weight_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="negative"):
+        with pytest.raises(ValueError, match="negative") as exc_info:
             validate_weights(ScoringWeights(property_score=-1.0))
+        assert "property_score" in str(exc_info.value)
 
     def test_valid_weights_pass(self) -> None:
         # Must not raise — a single positive weight is valid.
@@ -196,5 +198,6 @@ class TestAggregatorClass:
         assert results[0].composite_score > 0.0
 
     def test_aggregator_rejects_invalid_weights(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc_info:
             MolecularScoringAggregator(ScoringWeights(0.0, 0.0, 0.0, 0.0))
+        assert "zero" in str(exc_info.value).lower()
