@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
+from typing import Any
 
 from discovery_workbench.evidence import EvidenceLevel
 
@@ -117,13 +118,13 @@ class Report:
     branch: str
     tool_versions: dict[str, str]
     user_brief: str
-    parsed_constraints: dict[str, str]
+    parsed_constraints: dict[str, Any]
     budget: BudgetSettings
     stop_reason: str | None
     evidence_legend: dict[str, str]
     shortlist: list[ShortlistEntry] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    annexes: dict[str, object] = field(default_factory=dict)
+    annexes: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.run_id:
