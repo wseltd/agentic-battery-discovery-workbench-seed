@@ -83,9 +83,9 @@ def test_from_smiles_invalid_smiles_raises():
 
 def test_from_smiles_empty_smiles_raises():
     """Empty string raises ValueError."""
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="failed for SMILES") as exc_info:
         CanonicalMolecule.from_smiles("", evidence_level="generated")
-    assert exc_info.value is not None
+    assert "SMILES" in str(exc_info.value)
 
 
 def test_from_smiles_bad_evidence_level_raises():
