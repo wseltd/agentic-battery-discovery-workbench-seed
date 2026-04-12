@@ -65,8 +65,9 @@ class TestQedToolVersion:
 
 class TestQedNoneMol:
     def test_qed_none_mol_raises(self):
-        with pytest.raises(TypeError, match="NoneType"):
+        with pytest.raises(TypeError, match="NoneType") as exc_info:
             compute_qed(None)
+        assert "NoneType" in str(exc_info.value)
 
 
 class TestQedKnownMolecule:
@@ -118,8 +119,9 @@ class TestSaScoreToolVersion:
 
 class TestSaScoreNoneMol:
     def test_sa_score_none_mol_raises(self):
-        with pytest.raises(TypeError, match="NoneType"):
+        with pytest.raises(TypeError, match="NoneType") as exc_info:
             compute_sa_score(None)
+        assert "NoneType" in str(exc_info.value)
 
 
 # --- PropertyScore dataclass tests ------------------------------------------
