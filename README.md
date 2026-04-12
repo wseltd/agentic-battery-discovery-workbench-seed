@@ -2,6 +2,14 @@
 
 A dual-domain agentic discovery workbench for AI-guided generation, validation, and ranking of small-molecule drug candidates and inorganic crystalline materials.
 
+## Installation
+
+```bash
+pip install -e '.[dev]'
+```
+
+Requires Python 3.10 or later.
+
 ## Overview
 
 This workbench provides two scientific branches under a shared infrastructure:
