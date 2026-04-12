@@ -146,11 +146,12 @@ class BudgetController:
         """Return remaining budget as a dict.
 
         Returns:
-            Dict with keys ``cycles`` and ``batches``, each an int >= 0.
+            Dict with keys ``cycles_remaining`` and ``batches_remaining``,
+            each an int >= 0.  Values are clamped so they never go negative.
         """
         return {
-            "cycles": max(0, self.config.max_cycles - self.state.cycles_used),
-            "batches": max(0, self.config.max_batches - self.state.batches_used),
+            "cycles_remaining": max(0, self.config.max_cycles - self.state.cycles_used),
+            "batches_remaining": max(0, self.config.max_batches - self.state.batches_used),
         }
 
     # --- Private stop-condition checkers --------------------------------------

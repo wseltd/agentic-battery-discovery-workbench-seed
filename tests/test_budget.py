@@ -303,17 +303,36 @@ class TestShouldStop:
 class TestRemaining:
     def test_remaining_decrements(self):
         bc = BudgetController(BudgetConfig(max_cycles=5, max_batches=8))
-        assert bc.remaining() == {"cycles": 5, "batches": 8}
+        assert bc.remaining() == {"cycles_remaining": 5, "batches_remaining": 8}
         bc.record_cycle(1.0)
         bc.record_batch(1.0, 0.0)
-        assert bc.remaining() == {"cycles": 4, "batches": 7}
+        assert bc.remaining() == {"cycles_remaining": 4, "batches_remaining": 7}
 
     def test_remaining_floors_at_zero(self):
+        """Remaining values clamp to 0 when usage exceeds limits."""
         bc = BudgetController(BudgetConfig(max_cycles=1, max_batches=1))
         bc.record_cycle(1.0)
         bc.record_cycle(2.0)  # over limit
         bc.record_batch(1.0, 0.0)
         bc.record_batch(1.0, 0.0)  # over limit
         remaining = bc.remaining()
-        assert remaining["cycles"] == 0
-        assert remaining["batches"] == 0
+        assert remaining["cycles_remaining"] == 0
+        assert remaining["batches_remaining"] == 0
+
+    def test_remaining_after_exhaustion(self):
+        """After budget exhaustion, remaining returns zeros for exhausted resource."""
+        bc = BudgetController(BudgetConfig(max_cycles=2, max_batches=8))
+        bc.record_cycle(1.0)
+        bc.record_cycle(2.0)
+        remaining = bc.remaining()
+        assert remaining["cycles_remaining"] == 0
+        assert remaining["batches_remaining"] == 8
+
+    def test_remaining_independent_of_stop(self):
+        """remaining() reflects raw counters, not stop state."""
+        bc = BudgetController(BudgetConfig(max_cycles=5, max_batches=8))
+        bc.record_batch(1.0, 0.8)  # duplicate surge → stopped
+        assert bc.state.stopped is True
+        remaining = bc.remaining()
+        assert remaining["cycles_remaining"] == 5
+        assert remaining["batches_remaining"] == 7
