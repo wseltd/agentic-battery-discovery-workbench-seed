@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # nosec B404 — bash -n syntax check only, no untrusted input
 import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -15,7 +14,6 @@ from agentic_discovery.molecules.xtb_handoff import (
     ConformerGenerationError,
     HandoffBundle,
     XtbHandoffBuilder,
-    build_bundle,
 )
 from agentic_discovery.shared.evidence import EvidenceLevel
 
@@ -139,7 +137,7 @@ class TestRunScript:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
             f.write(ethanol_bundle.run_script)
             f.flush()
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607 — trusted input, syntax-check only
                 ["bash", "-n", f.name],
                 capture_output=True,
                 text=True,
@@ -217,8 +215,9 @@ class TestConformerFallback:
             "agentic_discovery.molecules.xtb_handoff.AllChem.EmbedMolecule",
             return_value=-1,
         ):
-            with pytest.raises(ConformerGenerationError):
+            with pytest.raises(ConformerGenerationError, match="conformer") as exc_info:
                 builder.build_bundle(ethanol_mol)
+        assert "ETKDG" in str(exc_info.value)
 
     def test_retry_adds_warning(
         self, builder: XtbHandoffBuilder, ethanol_mol: Chem.Mol
