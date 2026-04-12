@@ -73,26 +73,30 @@ def test_shortlist_entry_stores_evidence_level() -> None:
 
 def test_shortlist_rejects_empty_candidate_id() -> None:
     """Empty candidate_id is rejected at construction time."""
-    with pytest.raises(ValueError, match="candidate_id"):
+    with pytest.raises(ValueError, match="candidate_id") as exc_info:
         _entry(candidate_id="")
+    assert "non-empty" in str(exc_info.value)
 
 
 def test_shortlist_rejects_zero_rank() -> None:
     """rank must be >= 1."""
-    with pytest.raises(ValueError, match="rank"):
+    with pytest.raises(ValueError, match="rank") as exc_info:
         _entry(rank=0)
+    assert "0" in str(exc_info.value)
 
 
 def test_shortlist_rejects_negative_rank() -> None:
     """Negative rank is rejected."""
-    with pytest.raises(ValueError, match="rank"):
+    with pytest.raises(ValueError, match="rank") as exc_info:
         _entry(rank=-3)
+    assert "-3" in str(exc_info.value)
 
 
 def test_shortlist_rejects_invalid_evidence_level() -> None:
     """An evidence_level not in EvidenceLevel labels is rejected."""
-    with pytest.raises(ValueError, match="evidence_level"):
+    with pytest.raises(ValueError, match="evidence_level") as exc_info:
         _entry(evidence_level="made_up")
+    assert "'made_up'" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +122,7 @@ def test_report_allows_none_stop_reason() -> None:
     """stop_reason=None is valid — the run may still be in progress."""
     r = _report(stop_reason=None)
     assert r.stop_reason is None
+    assert r.run_id == "r1"
 
 
 def test_report_inorganic_branch() -> None:
@@ -132,23 +137,27 @@ def test_report_inorganic_branch() -> None:
 
 def test_report_rejects_empty_run_id() -> None:
     """Empty run_id is rejected at construction time."""
-    with pytest.raises(ValueError, match="run_id"):
+    with pytest.raises(ValueError, match="run_id") as exc_info:
         _report(run_id="")
+    assert "non-empty" in str(exc_info.value)
 
 
 def test_report_rejects_unknown_branch() -> None:
     """A branch not in VALID_BRANCHES is rejected."""
-    with pytest.raises(ValueError, match="branch"):
+    with pytest.raises(ValueError, match="branch") as exc_info:
         _report(branch="protein_folding")
+    assert "'protein_folding'" in str(exc_info.value)
 
 
 def test_report_rejects_unparseable_timestamp() -> None:
     """A non-ISO-8601 timestamp string is rejected."""
-    with pytest.raises(ValueError, match="timestamp"):
+    with pytest.raises(ValueError, match="timestamp") as exc_info:
         _report(timestamp="not-a-date")
+    assert "'not-a-date'" in str(exc_info.value)
 
 
 def test_report_rejects_numeric_timestamp() -> None:
     """A numeric timestamp (wrong type) is rejected."""
-    with pytest.raises(ValueError, match="timestamp"):
+    with pytest.raises(ValueError, match="timestamp") as exc_info:
         _report(timestamp=12345)  # type: ignore[arg-type]
+    assert "12345" in str(exc_info.value)
