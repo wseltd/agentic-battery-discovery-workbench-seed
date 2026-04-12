@@ -18,6 +18,8 @@ from discovery_workbench.report_constants import (
     BANNED_WORDS_PATTERN,
 )
 
+__version__ = "0.1.0"
+
 # Re-export so callers can import from this module.
 __all__ = ["render_report", "inject_provenance", "APPROVED_WORDING", "BANNED_WORDS"]
 from discovery_workbench.report_schema import Report, ShortlistEntry
