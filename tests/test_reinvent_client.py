@@ -17,6 +17,7 @@ import pytest
 from agentic_discovery.molecules.reinvent_client import (
     GeneratedMolecule,
     Reinvent4Client,
+    Reinvent4Error,
     invoke_reinvent,
     parse_reinvent_output,
 )
@@ -261,6 +262,68 @@ class TestParseOutputFile:
         molecules = client._parse_output(csv_file, "scaffold_constrained")
         assert molecules[0].task_type == "scaffold_constrained"
         assert molecules[0].evidence_level is EvidenceLevel.GENERATED
+
+
+# ---------------------------------------------------------------------------
+# _run_reinvent tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunReinventSuccess:
+    def test_run_reinvent_success_returns_completed_process(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[run]\ntype = 'sampling'\n")
+        client = Reinvent4Client("/fake/reinvent")
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["/fake/reinvent", str(config_path)],
+                returncode=0,
+                stdout="SMILES,Score\nCCO,0.9\n",
+                stderr="",
+            )
+            result = client._run_reinvent(config_path)
+        assert result.returncode == 0
+        assert "CCO" in result.stdout
+        # Verify subprocess.run was called with full path args, not shell=True
+        call_args = mock_run.call_args
+        assert call_args[0][0] == ["/fake/reinvent", str(config_path)]
+        assert call_args[1].get("shell", False) is False
+
+
+class TestRunReinventFailure:
+    def test_run_reinvent_nonzero_exit_raises_reinvent4error(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[run]\ntype = 'sampling'\n")
+        client = Reinvent4Client("/fake/reinvent")
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["reinvent", str(config_path)],
+                returncode=1,
+                stdout="",
+                stderr="Error: invalid configuration",
+            )
+            with pytest.raises(Reinvent4Error) as exc_info:
+                client._run_reinvent(config_path)
+            assert exc_info.value.returncode == 1
+            assert "invalid configuration" in exc_info.value.stderr
+            assert "exit code 1" in str(exc_info.value)
+
+    def test_run_reinvent_preserves_stderr_and_returncode(self, tmp_path: Path) -> None:
+        """Different exit codes and stderr messages are preserved faithfully."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("")
+        client = Reinvent4Client("/fake/reinvent")
+        with patch("agentic_discovery.molecules.reinvent_client.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["reinvent", str(config_path)],
+                returncode=137,
+                stdout="",
+                stderr="Killed by OOM",
+            )
+            with pytest.raises(Reinvent4Error) as exc_info:
+                client._run_reinvent(config_path)
+            assert exc_info.value.returncode == 137
+            assert exc_info.value.stderr == "Killed by OOM"
 
 
 # ---------------------------------------------------------------------------

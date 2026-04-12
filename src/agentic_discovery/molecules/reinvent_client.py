@@ -21,6 +21,28 @@ logger = logging.getLogger(__name__)
 
 _VALID_TASK_TYPES = frozenset({"de_novo", "scaffold_constrained", "optimise"})
 
+
+class Reinvent4Error(Exception):
+    """Raised when the REINVENT 4 subprocess exits with a non-zero return code.
+
+    Parameters
+    ----------
+    stderr:
+        Standard-error output from the failed process.
+    returncode:
+        The non-zero exit code.
+    """
+
+    def __init__(self, stderr: str, returncode: int) -> None:
+        self.stderr = stderr
+        self.returncode = returncode
+        super().__init__(
+            f"REINVENT 4 failed with exit code {returncode}: {stderr}"
+        )
+
+    def __repr__(self) -> str:
+        return f"Reinvent4Error(returncode={self.returncode!r}, stderr={self.stderr!r})"
+
 # Type alias — ParsedConstraints is a plain dict until a richer type is warranted.
 ParsedConstraints = dict[str, Any]
 
@@ -80,6 +102,38 @@ class Reinvent4Client:
 
     def __init__(self, reinvent_path: str) -> None:
         self._reinvent_path = Path(reinvent_path)
+
+    def _run_reinvent(self, config_path: Path) -> subprocess.CompletedProcess:
+        """Invoke REINVENT 4 as a subprocess.
+
+        Parameters
+        ----------
+        config_path:
+            Path to the TOML configuration file to pass to REINVENT.
+
+        Returns
+        -------
+        subprocess.CompletedProcess
+            The completed process result on success.
+
+        Raises
+        ------
+        Reinvent4Error
+            If the REINVENT process exits with a non-zero return code.
+        """
+        # Never use shell=True — args list prevents shell injection.
+        # Uses the full path stored at construction time to satisfy B603.
+        result = subprocess.run(  # nosec B603 — args are controlled, not user input
+            [str(self._reinvent_path), str(config_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise Reinvent4Error(
+                stderr=result.stderr, returncode=result.returncode
+            )
+        return result
 
     def _parse_output(
         self,
