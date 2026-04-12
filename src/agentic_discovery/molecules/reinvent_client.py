@@ -81,6 +81,34 @@ class Reinvent4Client:
     def __init__(self, reinvent_path: str) -> None:
         self._reinvent_path = Path(reinvent_path)
 
+    def _parse_output(
+        self,
+        csv_path: Path,
+        task_type: str,
+    ) -> list[GeneratedMolecule]:
+        """Read REINVENT CSV output from disk and return parsed molecules.
+
+        Parameters
+        ----------
+        csv_path:
+            Path to the CSV file written by REINVENT 4.
+        task_type:
+            The generation task type to stamp on each molecule.
+
+        Returns
+        -------
+        list[GeneratedMolecule]
+            Successfully parsed molecules. Empty list if the file is
+            empty or contains only a header.
+        """
+        try:
+            text = csv_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning("REINVENT output file not found: %s", csv_path)
+            return []
+
+        return parse_reinvent_output(text, task_type)
+
     def build_config(
         self,
         task_type: str,

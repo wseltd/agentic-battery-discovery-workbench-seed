@@ -199,6 +199,71 @@ class TestParseOutputMalformed:
 
 
 # ---------------------------------------------------------------------------
+# _parse_output (file-based) tests
+# ---------------------------------------------------------------------------
+
+
+class TestParseOutputFile:
+    """Tests for Reinvent4Client._parse_output which reads CSV from disk."""
+
+    def test_parse_output_file_valid_csv(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "results.csv"
+        csv_file.write_text("SMILES,Score\nCCO,0.85\nCCN,0.72\n")
+        client = Reinvent4Client("/fake/reinvent")
+        molecules = client._parse_output(csv_file, "de_novo")
+        assert len(molecules) == 2
+        assert molecules[0].smiles == "CCO"
+        assert molecules[0].score == pytest.approx(0.85)
+        assert molecules[1].smiles == "CCN"
+
+    def test_parse_output_file_empty_returns_empty_list(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "empty.csv"
+        csv_file.write_text("")
+        client = Reinvent4Client("/fake/reinvent")
+        assert client._parse_output(csv_file, "de_novo") == []
+
+    def test_parse_output_file_header_only_returns_empty_list(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "header_only.csv"
+        csv_file.write_text("SMILES,Score\n")
+        client = Reinvent4Client("/fake/reinvent")
+        assert client._parse_output(csv_file, "de_novo") == []
+
+    def test_parse_output_file_missing_returns_empty_with_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A missing file (partial/aborted run) should return [] and warn."""
+        missing = tmp_path / "no_such_file.csv"
+        client = Reinvent4Client("/fake/reinvent")
+        with caplog.at_level("WARNING"):
+            result = client._parse_output(missing, "de_novo")
+        assert result == []
+        assert any("not found" in r.message.lower() for r in caplog.records)
+
+    def test_parse_output_file_malformed_lines_skipped(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Malformed rows in the CSV are skipped; valid rows are returned."""
+        csv_file = tmp_path / "partial.csv"
+        csv_file.write_text("SMILES,Score\nCCO,0.9\nbad_row,not_float\nCCN,0.8\n")
+        client = Reinvent4Client("/fake/reinvent")
+        with caplog.at_level("WARNING"):
+            molecules = client._parse_output(csv_file, "optimise")
+        assert len(molecules) == 2
+        assert molecules[0].smiles == "CCO"
+        assert molecules[1].smiles == "CCN"
+        assert molecules[0].task_type == "optimise"
+        assert any("malformed" in r.message.lower() for r in caplog.records)
+
+    def test_parse_output_file_stamps_task_type(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "results.csv"
+        csv_file.write_text("SMILES,Score\nCCO,0.5\n")
+        client = Reinvent4Client("/fake/reinvent")
+        molecules = client._parse_output(csv_file, "scaffold_constrained")
+        assert molecules[0].task_type == "scaffold_constrained"
+        assert molecules[0].evidence_level is EvidenceLevel.GENERATED
+
+
+# ---------------------------------------------------------------------------
 # invoke_reinvent tests
 # ---------------------------------------------------------------------------
 
