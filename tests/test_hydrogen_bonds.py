@@ -118,10 +118,15 @@ class TestEdgeCases:
         assert calc_hbd(mol) == 1
 
     def test_return_type_is_int(self):
+        """Ethanol (CCO) — verify return type is int and values are correct."""
         mol = Chem.MolFromSmiles("CCO")
         assert mol is not None
-        assert isinstance(calc_hbd(mol), int)
-        assert isinstance(calc_hba(mol), int)
+        hbd = calc_hbd(mol)
+        hba = calc_hba(mol)
+        assert isinstance(hbd, int)
+        assert isinstance(hba, int)
+        assert hbd == 1
+        assert hba == 1
 
 
 class TestInvalidInput:
