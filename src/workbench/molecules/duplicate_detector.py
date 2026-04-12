@@ -17,8 +17,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from rdkit.Chem import Mol, MolToSmiles, inchi
+from rdkit.Chem import Mol, MolToSmiles
 from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
+from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
 from rdkit.DataStructs import TanimotoSimilarity
 
 
@@ -112,7 +113,9 @@ class DuplicateDetector:
             )
 
         canon = MolToSmiles(mol)
-        inchikey = inchi.MolToInchiKey(mol)
+        # Two-step InChIKey: MolToInchi then InchiToInchiKey
+        inchi_str = MolToInchi(mol)
+        inchikey = InchiToInchiKey(inchi_str) if inchi_str is not None else None
         fp = GetMorganFingerprintAsBitVect(
             mol, _MORGAN_RADIUS, nBits=_MORGAN_NBITS
         )
@@ -154,7 +157,8 @@ class DuplicateDetector:
                 similarity=1.0,
             )
 
-        inchikey = inchi.MolToInchiKey(mol)
+        inchi_str = MolToInchi(mol)
+        inchikey = InchiToInchiKey(inchi_str) if inchi_str is not None else None
         if inchikey is not None and inchikey in self._inchikey_index:
             return DuplicateResult(
                 status=DuplicateStatus.EXACT_DUPLICATE,
