@@ -4,8 +4,8 @@ Coverage is weighted toward the early-stop heuristics (plateau, invalidity,
 duplicate surge) because those have boundary-condition risk.  Dataclass defaults
 get lighter coverage since they are trivially correct.
 
-record_batch takes (valid_fraction, unique_fraction).  Invalidity is
-1 - valid_fraction; duplicate rate is 1 - unique_fraction.
+record_batch takes (valid_fraction, duplicate_fraction).  Invalidity is
+1 - valid_fraction; duplicate rate is duplicate_fraction directly.
 """
 
 from __future__ import annotations
@@ -84,9 +84,8 @@ class TestExhaustion:
 
     def test_budget_exhaustion_batches(self):
         bc = BudgetController(BudgetConfig(max_cycles=100, max_batches=2))
-        # valid_fraction=1.0, unique_fraction=1.0 → no invalidity or duplicate issues
-        bc.record_batch(1.0, 1.0)
-        bc.record_batch(1.0, 1.0)
+        bc.record_batch(1.0, 0.0)
+        bc.record_batch(1.0, 0.0)
         stop, reason = bc.should_stop()
         assert stop is True
         assert "batches" in reason
@@ -153,6 +152,16 @@ class TestPlateau:
         assert stop is True
         assert "plateau" in reason
 
+    def test_cycle_score_history_is_trimmed(self):
+        """Score history is bounded to PLATEAU_CONSECUTIVE_CYCLES + 1 entries."""
+        bc = BudgetController(BudgetConfig(max_cycles=100))
+        max_len = PLATEAU_CONSECUTIVE_CYCLES + 1
+        # Record more cycles than the window size, each with enough improvement
+        # to avoid plateau.
+        for i in range(max_len + 5):
+            bc.record_cycle(float(i))
+        assert len(bc._cycle_scores) == max_len
+
 
 # ---------------------------------------------------------------------------
 # Invalidity spike
@@ -162,8 +171,8 @@ class TestInvaliditySpike:
     def test_invalidity_spike_two_consecutive(self):
         # valid_fraction=0.3 → invalidity=0.7 >= 0.5
         bc = BudgetController()
-        bc.record_batch(0.3, 1.0)
-        bc.record_batch(0.3, 1.0)
+        bc.record_batch(0.3, 0.0)
+        bc.record_batch(0.3, 0.0)
         stop, reason = bc.should_stop()
         assert stop is True
         assert "invalidity" in reason
@@ -171,24 +180,24 @@ class TestInvaliditySpike:
     def test_invalidity_spike_not_triggered_once(self):
         """A single high-invalidity batch is not enough."""
         bc = BudgetController()
-        bc.record_batch(0.3, 1.0)  # invalidity=0.7 but only one batch
+        bc.record_batch(0.3, 0.0)  # invalidity=0.7 but only one batch
         stop, reason = bc.should_stop()
         assert stop is False
 
     def test_invalidity_resets_on_good_batch(self):
         """A good batch in between resets the consecutive counter."""
         bc = BudgetController()
-        bc.record_batch(0.3, 1.0)  # bad: invalidity=0.7
-        bc.record_batch(0.8, 1.0)  # good: invalidity=0.2
-        bc.record_batch(0.3, 1.0)  # bad again, but only one consecutive
+        bc.record_batch(0.3, 0.0)  # bad: invalidity=0.7
+        bc.record_batch(0.8, 0.0)  # good: invalidity=0.2
+        bc.record_batch(0.3, 0.0)  # bad again, but only one consecutive
         stop, reason = bc.should_stop()
         assert stop is False
 
     def test_at_threshold_boundary_invalidity(self):
         """Invalidity exactly at threshold (0.50) triggers: valid_fraction=0.5."""
         bc = BudgetController()
-        bc.record_batch(0.5, 1.0)  # invalidity=0.5 >= 0.5
-        bc.record_batch(0.5, 1.0)
+        bc.record_batch(0.5, 0.0)  # invalidity=0.5 >= 0.5
+        bc.record_batch(0.5, 0.0)
         stop, reason = bc.should_stop()
         assert stop is True
         assert "invalidity" in reason
@@ -196,10 +205,18 @@ class TestInvaliditySpike:
     def test_just_below_threshold_no_invalidity(self):
         """valid_fraction=0.51 → invalidity=0.49, below threshold."""
         bc = BudgetController()
-        bc.record_batch(0.51, 1.0)
-        bc.record_batch(0.51, 1.0)
+        bc.record_batch(0.51, 0.0)
+        bc.record_batch(0.51, 0.0)
         stop, reason = bc.should_stop()
         assert stop is False
+
+    def test_invalidity_history_is_trimmed(self):
+        """Invalidity history is bounded to INVALIDITY_CONSECUTIVE_BATCHES entries."""
+        bc = BudgetController(BudgetConfig(max_batches=100))
+        max_len = INVALIDITY_CONSECUTIVE_BATCHES
+        for _ in range(max_len + 5):
+            bc.record_batch(0.8, 0.0)  # good batches, no spike
+        assert len(bc._invalidity_fractions) == max_len
 
 
 # ---------------------------------------------------------------------------
@@ -209,34 +226,40 @@ class TestInvaliditySpike:
 class TestDuplicateSurge:
     def test_duplicate_surge_single_batch(self):
         """A single batch with high duplicate fraction triggers immediate stop."""
-        # unique_fraction=0.2 → duplicate=0.8 >= 0.7
         bc = BudgetController()
-        bc.record_batch(1.0, 0.2)
+        bc.record_batch(1.0, 0.8)  # duplicate=0.8 >= 0.7
         stop, reason = bc.should_stop()
         assert stop is True
         assert "duplicate" in reason
 
     def test_duplicate_surge_below_threshold(self):
-        # unique_fraction=0.4 → duplicate=0.6 < 0.7
         bc = BudgetController()
-        bc.record_batch(1.0, 0.4)
+        bc.record_batch(1.0, 0.6)  # duplicate=0.6 < 0.7
         stop, reason = bc.should_stop()
         assert stop is False
 
     def test_at_threshold_boundary_duplicate(self):
-        """unique_fraction=0.3 → duplicate=0.7, exactly at threshold — triggers."""
+        """duplicate_fraction=0.7, exactly at threshold — triggers."""
         bc = BudgetController()
-        bc.record_batch(1.0, 0.3)
+        bc.record_batch(1.0, 0.7)
         stop, reason = bc.should_stop()
         assert stop is True
         assert "duplicate" in reason
 
     def test_just_below_threshold_no_duplicate(self):
-        """unique_fraction=0.31 → duplicate=0.69, below threshold."""
+        """duplicate_fraction=0.69, below threshold."""
         bc = BudgetController()
-        bc.record_batch(1.0, 0.31)
+        bc.record_batch(1.0, 0.69)
         stop, reason = bc.should_stop()
         assert stop is False
+
+    def test_duplicate_surge_sets_stopped_eagerly(self):
+        """Duplicate surge is detected in record_batch, not deferred to should_stop."""
+        bc = BudgetController()
+        bc.record_batch(1.0, 0.8)
+        # stopped is set before should_stop is called
+        assert bc.state.stopped is True
+        assert "duplicate" in bc.state.stop_reason
 
 
 # ---------------------------------------------------------------------------
@@ -262,11 +285,11 @@ class TestShouldStop:
     def test_stop_is_sticky(self):
         """Once stopped, subsequent calls return the same reason without re-evaluation."""
         bc = BudgetController()
-        bc.record_batch(1.0, 0.2)  # duplicate=0.8 → surge
+        bc.record_batch(1.0, 0.8)  # duplicate=0.8 → surge
         stop1, reason1 = bc.should_stop()
         assert stop1 is True
         # Record a good batch — should not clear the stop.
-        bc.record_batch(1.0, 1.0)
+        bc.record_batch(1.0, 0.0)
         stop2, reason2 = bc.should_stop()
         assert stop2 is True
         assert reason2 == reason1
@@ -281,15 +304,15 @@ class TestRemaining:
         bc = BudgetController(BudgetConfig(max_cycles=5, max_batches=8))
         assert bc.remaining() == {"cycles": 5, "batches": 8}
         bc.record_cycle(1.0)
-        bc.record_batch(1.0, 1.0)
+        bc.record_batch(1.0, 0.0)
         assert bc.remaining() == {"cycles": 4, "batches": 7}
 
     def test_remaining_floors_at_zero(self):
         bc = BudgetController(BudgetConfig(max_cycles=1, max_batches=1))
         bc.record_cycle(1.0)
         bc.record_cycle(2.0)  # over limit
-        bc.record_batch(1.0, 1.0)
-        bc.record_batch(1.0, 1.0)  # over limit
+        bc.record_batch(1.0, 0.0)
+        bc.record_batch(1.0, 0.0)  # over limit
         remaining = bc.remaining()
         assert remaining["cycles"] == 0
         assert remaining["batches"] == 0

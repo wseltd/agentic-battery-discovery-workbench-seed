@@ -57,21 +57,26 @@ class BudgetState:
 class BudgetController:
     """Tracks budget consumption and evaluates early-stop conditions.
 
-    Holds a BudgetConfig (limits) and a BudgetState (counters), plus internal
-    history needed for heuristic stop detection.
+    Holds a BudgetConfig (limits) and a BudgetState (counters), plus bounded
+    history lists for heuristic stop detection.
 
     Args:
         config: Budget limits.  Defaults to BudgetConfig() if omitted.
     """
 
+    # Max entries kept in each history list.  Sized to the minimum window
+    # each heuristic needs — no point storing older values.
+    _MAX_SCORE_HISTORY = PLATEAU_CONSECUTIVE_CYCLES + 1
+    _MAX_INVALIDITY_HISTORY = INVALIDITY_CONSECUTIVE_BATCHES
+
     def __init__(self, config: BudgetConfig | None = None) -> None:
         self.config = config or BudgetConfig()
         self.state = BudgetState()
 
-        # Plateau tracking: list of best scores per cycle.
+        # Plateau tracking: bounded list of recent best scores per cycle.
         self._cycle_scores: list[float] = []
-        # Invalidity tracking: rolling count of consecutive high-invalidity batches.
-        self._consecutive_invalid_batches: int = 0
+        # Invalidity tracking: bounded list of recent invalidity fractions.
+        self._invalidity_fractions: list[float] = []
 
     def record_cycle(self, best_score: float) -> None:
         """Record one completed optimisation cycle with its best score.
@@ -81,25 +86,33 @@ class BudgetController:
         """
         self.state.cycles_used += 1
         self._cycle_scores.append(best_score)
+        if len(self._cycle_scores) > self._MAX_SCORE_HISTORY:
+            self._cycle_scores = self._cycle_scores[-self._MAX_SCORE_HISTORY:]
 
-    def record_batch(self, valid_fraction: float, unique_fraction: float) -> None:
+    def record_batch(self, valid_fraction: float, duplicate_fraction: float) -> None:
         """Record one completed generation batch.
 
         Args:
             valid_fraction: Fraction of candidates that passed validation (0-1).
                 Invalidity rate is computed as 1 - valid_fraction.
-            unique_fraction: Fraction of candidates that were novel (0-1).
-                Duplicate rate is computed as 1 - unique_fraction.
+            duplicate_fraction: Fraction of candidates that were duplicates (0-1).
         """
         self.state.batches_used += 1
 
         invalidity = 1.0 - valid_fraction
-        if invalidity >= INVALIDITY_SPIKE_THRESHOLD:
-            self._consecutive_invalid_batches += 1
-        else:
-            self._consecutive_invalid_batches = 0
+        self._invalidity_fractions.append(invalidity)
+        if len(self._invalidity_fractions) > self._MAX_INVALIDITY_HISTORY:
+            self._invalidity_fractions = self._invalidity_fractions[
+                -self._MAX_INVALIDITY_HISTORY:
+            ]
 
-        self._last_duplicate_fraction: float = 1.0 - unique_fraction
+        # Duplicate surge is an immediate stop — checked eagerly here rather
+        # than deferring to should_stop, because a single bad batch is enough.
+        if duplicate_fraction >= DUPLICATE_SURGE_THRESHOLD and not self.state.stopped:
+            self.state.stopped = True
+            self.state.stop_reason = (
+                "duplicate_surge: high duplicate fraction in batch"
+            )
 
     def should_stop(self) -> tuple[bool, str | None]:
         """Evaluate all stop conditions.  First triggered condition wins.
@@ -107,17 +120,19 @@ class BudgetController:
         Returns:
             (should_stop, reason) where reason is None when should_stop is False.
 
-        Order: exhaustion (cycles, batches), plateau, invalidity spike,
-        duplicate surge.  Order is fixed so that results are deterministic.
+        Order: exhaustion (cycles, batches), plateau, invalidity spike.
+        Duplicate surge is checked eagerly in record_batch.
+        Order is fixed so that results are deterministic.
         """
         if self.state.stopped:
             return True, self.state.stop_reason
 
+        # Duplicate surge is checked eagerly in record_batch (immediate stop),
+        # so it is not re-evaluated here.
         reason = (
             self._check_exhaustion()
             or self._check_plateau()
             or self._check_invalidity()
-            or self._check_duplicate_surge()
         )
 
         if reason is not None:
@@ -163,12 +178,10 @@ class BudgetController:
         return "plateau: score improvement below threshold for consecutive cycles"
 
     def _check_invalidity(self) -> str | None:
-        if self._consecutive_invalid_batches >= INVALIDITY_CONSECUTIVE_BATCHES:
+        if len(self._invalidity_fractions) < INVALIDITY_CONSECUTIVE_BATCHES:
+            return None
+        # Check that the last N fractions are all at or above the threshold.
+        tail = self._invalidity_fractions[-INVALIDITY_CONSECUTIVE_BATCHES:]
+        if all(f >= INVALIDITY_SPIKE_THRESHOLD for f in tail):
             return "invalidity_spike: high invalid fraction in consecutive batches"
-        return None
-
-    def _check_duplicate_surge(self) -> str | None:
-        dup = getattr(self, "_last_duplicate_fraction", None)
-        if dup is not None and dup >= DUPLICATE_SURGE_THRESHOLD:
-            return "duplicate_surge: high duplicate fraction in batch"
         return None
