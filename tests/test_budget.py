@@ -123,16 +123,17 @@ class TestPlateau:
         assert reason is None
 
     def test_at_threshold_boundary_plateau(self):
-        """Improvement exactly at threshold (0.01) is NOT above it, so counts as stall.
+        """Improvement exactly at threshold (0.01) is NOT a plateau.
 
-        Uses 0.005 increments to avoid IEEE 754 subtraction noise around 0.01.
+        Uses scores where subtraction yields exactly 0.01 (no IEEE 754 noise)
+        to verify that >= comparison treats threshold as sufficient improvement.
         """
         bc = BudgetController(BudgetConfig(max_cycles=10))
-        bc.record_cycle(1.0)
-        bc.record_cycle(1.005)  # +0.005, below threshold — stall
+        bc.record_cycle(0.0)
+        bc.record_cycle(0.01)  # improvement == 0.01, exactly at threshold
         stop, reason = bc.should_stop()
-        assert stop is True
-        assert "plateau" in reason
+        assert stop is False
+        assert reason is None
 
     def test_just_above_threshold_no_plateau(self):
         """Improvement of 0.011 is above threshold — no plateau."""

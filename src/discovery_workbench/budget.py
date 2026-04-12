@@ -172,7 +172,7 @@ class BudgetController:
         # Two consecutive plateau cycles = one improvement window to check.
         for i in range(n - PLATEAU_CONSECUTIVE_CYCLES + 1, n):
             improvement = self._cycle_scores[i] - self._cycle_scores[i - 1]
-            if improvement > PLATEAU_IMPROVEMENT_THRESHOLD:
+            if improvement >= PLATEAU_IMPROVEMENT_THRESHOLD:
                 return None
 
         return "plateau: score improvement below threshold for consecutive cycles"
