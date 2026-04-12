@@ -58,7 +58,7 @@ def validate_structure_parseable(structure_dict: dict) -> ValidationResult:
     """
     try:
         Structure.from_dict(structure_dict)
-    except Exception as exc:
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
         logger.debug("Structure parse failed: %s", exc)
         return ValidationResult(
             passed=False,
