@@ -114,5 +114,5 @@ def enforce_p1_policy(
         (ok, reason) — *ok* is False when the structure is blocked.
     """
     if is_p1(sg) and not allow_p1:
-        return False, "P1 (SG 1) structures are blocked by policy."
+        return False, "P1 structures require allow_P1=true; auto-down-ranked per Q20 policy"
     return True, ""

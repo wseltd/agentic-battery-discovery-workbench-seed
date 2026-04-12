@@ -135,7 +135,7 @@ def test_is_p1_true():
 
 def test_is_p1_false():
     assert is_p1(2) is False
-    assert is_p1(225) is False
+    assert is_p1(230) is False
 
 
 # --- enforce_p1_policy ---
@@ -144,7 +144,7 @@ def test_is_p1_false():
 def test_enforce_p1_policy_blocked():
     ok, reason = enforce_p1_policy(1, allow_p1=False)
     assert ok is False
-    assert "P1" in reason
+    assert reason == "P1 structures require allow_P1=true; auto-down-ranked per Q20 policy"
 
 
 def test_enforce_p1_policy_allowed():
