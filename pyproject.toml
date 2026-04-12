@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discovery-workbench"
+version = "0.1.0"
+description = "Dual-domain agentic discovery workbench for small-molecule and inorganic materials design"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "rdkit-pypi>=2024.3.1",
+    "pymatgen>=2024.6.10",
+    "ase>=3.23.0",
+    "smact>=2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
