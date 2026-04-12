@@ -140,9 +140,18 @@ def test_to_sdf_returns_string_with_terminator():
 def test_to_xyz_raises_without_conformer():
     """to_xyz raises ValueError when no conformer has been embedded."""
     mol = CanonicalMolecule.from_smiles("CCO", evidence_level="generated")
-    with pytest.raises(ValueError, match="No 3-D conformer") as exc_info:
+    with pytest.raises(ValueError, match="No conformer embedded") as exc_info:
         mol.to_xyz()
     assert "embed_conformer" in str(exc_info.value)
+
+
+def test_to_xyz_raises_on_out_of_range_conformer_id():
+    """to_xyz raises ValueError when conformer_id exceeds available conformers."""
+    mol = CanonicalMolecule.from_smiles("CCO", evidence_level="generated")
+    mol_with_conf = mol.embed_conformer()
+    with pytest.raises(ValueError, match="out of range") as exc_info:
+        mol_with_conf.to_xyz(conformer_id=99)
+    assert "99" in str(exc_info.value)
 
 
 def test_embed_conformer_enables_xyz_export():

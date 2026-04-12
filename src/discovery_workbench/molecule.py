@@ -137,20 +137,31 @@ class CanonicalMolecule:
         """Return an SDF string (molblock followed by ``$$$$`` terminator)."""
         return self.to_molblock() + "\n$$$$\n"
 
-    def to_xyz(self) -> str:
-        """Return an XYZ-format string.
+    def to_xyz(self, conformer_id: int = 0) -> str:
+        """Return an XYZ-format string for the given conformer.
+
+        Parameters
+        ----------
+        conformer_id:
+            Index of the conformer to export (default ``0``).
 
         Raises
         ------
         ValueError
-            If the molecule has no 3-D conformer.  Call :meth:`embed_conformer`
-            first.
+            If the molecule has no conformers or *conformer_id* is out of range.
+            Call :meth:`embed_conformer` first.
         """
-        if self._mol.GetNumConformers() == 0:
+        num_confs = self._mol.GetNumConformers()
+        if num_confs == 0:
             raise ValueError(
-                "No 3-D conformer available.  Call embed_conformer() first."
+                "No conformer embedded. Call embed_conformer() first."
             )
-        return Chem.MolToXYZBlock(self._mol)
+        if conformer_id < 0 or conformer_id >= num_confs:
+            raise ValueError(
+                f"conformer_id {conformer_id} out of range "
+                f"(molecule has {num_confs} conformer(s))"
+            )
+        return Chem.MolToXYZBlock(self._mol, confId=conformer_id)
 
     def embed_conformer(self, random_seed: int = 42) -> CanonicalMolecule:
         """Return a **new** CanonicalMolecule with an embedded 3-D conformer.
