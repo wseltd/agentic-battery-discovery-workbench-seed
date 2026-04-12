@@ -214,5 +214,6 @@ def test_build_reference_creates_valid_checker():
 def test_none_mol_raises():
     """Passing None instead of Mol must raise TypeError with helpful message."""
     checker = ChEMBLNoveltyChecker.build_reference([MolFromSmiles("CCO")])
-    with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+    with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
         checker.check(None)
+    assert "NoneType" in str(exc_info.value)
