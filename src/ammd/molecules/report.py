@@ -13,12 +13,72 @@ from typing import Any
 __all__ = [
     "ConstraintResult",
     "ExportPaths",
+    "HEURISTIC_WARNING_TEMPLATES",
     "MoleculeReportAnnex",
     "NoveltyStats",
     "UniquenessStats",
     "ValidityStats",
     "build_molecule_annex",
+    "format_heuristic_warning",
 ]
+
+# Q31-approved heuristic warning templates.
+# Each value is a str.format()-compatible template.  Keys are stable identifiers
+# used programmatically; the rendered text is what appears in reports.
+HEURISTIC_WARNING_TEMPLATES: dict[str, str] = {
+    "crippen_logp": (
+        "Estimated by RDKit Crippen; heuristic prediction, may be inaccurate."
+    ),
+    "tpsa_approx": (
+        "TPSA computed via fragment-based approximation; "
+        "real value may differ for strained rings."
+    ),
+    "similarity_cutoff": (
+        "Novelty uses Tanimoto threshold {threshold}; "
+        "near-boundary molecules may be misclassified."
+    ),
+    "xtb_semiempirical": (
+        "xTB energies are semi-empirical (GFN{level}); "
+        "treat as ranking heuristic, not absolute values."
+    ),
+    "salt_strip_heuristic": (
+        "Salt stripping uses a curated fragment list; "
+        "unusual salts may not be removed."
+    ),
+    "stereo_perception": (
+        "Stereocentre detection is RDKit-based; "
+        "complex macrocyclic stereo may be missed."
+    ),
+}
+
+
+def format_heuristic_warning(template_key: str, **kwargs: object) -> str:
+    """Select an approved heuristic-warning template and format it.
+
+    Parameters
+    ----------
+    template_key:
+        Key into ``HEURISTIC_WARNING_TEMPLATES``.
+    **kwargs:
+        Values substituted into the template via ``str.format_map``.
+
+    Returns
+    -------
+    str
+        The formatted warning string.
+
+    Raises
+    ------
+    ValueError
+        If *template_key* is not a recognised template.
+    """
+    template = HEURISTIC_WARNING_TEMPLATES.get(template_key)
+    if template is None:
+        raise ValueError(
+            f"Unknown heuristic-warning template key {template_key!r}. "
+            f"Valid keys: {sorted(HEURISTIC_WARNING_TEMPLATES)}"
+        )
+    return template.format_map(kwargs)
 
 
 @dataclass(frozen=True)

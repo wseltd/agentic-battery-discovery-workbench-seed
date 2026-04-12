@@ -7,6 +7,7 @@ import json
 import pytest
 
 from ammd.molecules.report import (
+    HEURISTIC_WARNING_TEMPLATES,
     ConstraintResult,
     ExportPaths,
     MoleculeReportAnnex,
@@ -14,6 +15,7 @@ from ammd.molecules.report import (
     UniquenessStats,
     ValidityStats,
     build_molecule_annex,
+    format_heuristic_warning,
 )
 
 
@@ -222,7 +224,23 @@ def test_constraint_result_smarts_constraint():
 # -- Heuristic warnings ------------------------------------------------------
 
 def test_heuristic_warnings_are_strings():
-    """All heuristic warnings must be non-empty strings."""
+    """All approved templates produce non-empty strings; unknown keys raise ValueError."""
+    # Every template key must format to a non-empty string
+    # Templates that need kwargs get sample values via the fill dict
+    fill: dict[str, dict[str, object]] = {
+        "similarity_cutoff": {"threshold": 0.70},
+        "xtb_semiempirical": {"level": 2},
+    }
+    for key in HEURISTIC_WARNING_TEMPLATES:
+        result = format_heuristic_warning(key, **fill.get(key, {}))
+        assert isinstance(result, str), f"Template {key!r} did not produce a string"
+        assert len(result) > 0, f"Template {key!r} produced an empty string"
+
+    # Unknown key must raise ValueError with an actionable message
+    with pytest.raises(ValueError, match="Unknown heuristic-warning template key"):
+        format_heuristic_warning("nonexistent_key")
+
+    # Verify annex-level heuristic warning round-trip still works
     annex = _make_annex()
     assert len(annex.heuristic_warnings) == 1
     assert annex.heuristic_warnings[0] == (
