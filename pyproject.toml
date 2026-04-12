@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "rdkit-pypi>=2024.3.1",
+    "rdkit>=2024.3.1",
     "pymatgen>=2024.6.10",
     "ase>=3.23.0",
     "smact>=2.7",
