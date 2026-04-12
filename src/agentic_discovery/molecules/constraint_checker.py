@@ -89,53 +89,6 @@ class ConstraintResult:
             self.all_satisfied = all(r.passed for r in self.results)
 
 
-def _check_smarts(
-    mol: Chem.Mol,
-    pattern: str,
-    mode: str,
-) -> SingleConstraintResult:
-    """Evaluate a SMARTS substructure constraint.
-
-    Parameters
-    ----------
-    mol:
-        RDKit molecule object.
-    pattern:
-        SMARTS string.
-    mode:
-        ``"required"`` (must match) or ``"forbidden"`` (must not match).
-    """
-    query = Chem.MolFromSmarts(pattern)
-    if query is None:
-        logger.warning("Invalid SMARTS pattern: %s", pattern)
-        return SingleConstraintResult(
-            constraint_name="smarts",
-            operator=mode,
-            target_value=pattern,
-            actual_value=None,
-            passed=False,
-            reason=f"Invalid SMARTS pattern: {pattern}",
-        )
-
-    has_match = mol.HasSubstructMatch(query)
-
-    if mode == "required":
-        passed = has_match
-        reason = None if passed else f"Required SMARTS '{pattern}' not found"
-    else:  # forbidden
-        passed = not has_match
-        reason = None if passed else f"Forbidden SMARTS '{pattern}' is present"
-
-    return SingleConstraintResult(
-        constraint_name="smarts",
-        operator=mode,
-        target_value=pattern,
-        actual_value=has_match,
-        passed=passed,
-        reason=reason,
-    )
-
-
 class ConstraintChecker:
     """Checks molecules against a set of numeric and SMARTS constraints.
 
@@ -238,6 +191,56 @@ class ConstraintChecker:
             reason=reason,
         )
 
+    def _check_smarts(
+        self,
+        constraint_name: str,
+        smarts: str,
+        mol: Chem.Mol,
+        required: bool,
+    ) -> SingleConstraintResult:
+        """Evaluate a SMARTS substructure constraint.
+
+        Parameters
+        ----------
+        constraint_name:
+            Human-readable name for the constraint.
+        smarts:
+            SMARTS pattern string.
+        mol:
+            RDKit molecule object.
+        required:
+            If True the pattern must be present; if False it must be absent.
+        """
+        query = Chem.MolFromSmarts(smarts)
+        if query is None:
+            logger.warning("Invalid SMARTS pattern: %s", smarts)
+            return SingleConstraintResult(
+                constraint_name=constraint_name,
+                operator="required" if required else "forbidden",
+                target_value=smarts,
+                actual_value=None,
+                passed=False,
+                reason="Invalid SMARTS pattern",
+            )
+
+        has_match = mol.HasSubstructMatch(query)
+
+        if required:
+            passed = has_match
+            reason = None if passed else f"Required SMARTS '{smarts}' not found"
+        else:
+            passed = not has_match
+            reason = None if passed else f"Forbidden SMARTS '{smarts}' is present"
+
+        return SingleConstraintResult(
+            constraint_name=constraint_name,
+            operator="required" if required else "forbidden",
+            target_value=smarts,
+            actual_value=has_match,
+            passed=passed,
+            reason=reason,
+        )
+
     def check(self, smiles: str) -> ConstraintResult:
         """Evaluate all constraints against a molecule.
 
@@ -294,11 +297,13 @@ class ConstraintChecker:
                     )
                 )
             elif ctype == "smarts":
+                mode = constraint["mode"]
                 results.append(
-                    _check_smarts(
-                        mol,
-                        constraint["pattern"],
-                        constraint["mode"],
+                    self._check_smarts(
+                        constraint_name="smarts",
+                        smarts=constraint["pattern"],
+                        mol=mol,
+                        required=(mode == "required"),
                     )
                 )
 
