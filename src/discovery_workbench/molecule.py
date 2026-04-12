@@ -185,7 +185,10 @@ class CanonicalMolecule:
         params.randomSeed = random_seed
         status = AllChem.EmbedMolecule(mol_copy, params)
         if status == -1:
-            raise ValueError("Conformer embedding failed.")
+            raise ValueError(
+                f"Conformer embedding failed for {self.canonical_smiles!r}. "
+                "The molecule may be too constrained for 3-D coordinate generation."
+            )
         mol_copy = Chem.RemoveHs(mol_copy)
         return CanonicalMolecule(
             canonical_smiles=self.canonical_smiles,
