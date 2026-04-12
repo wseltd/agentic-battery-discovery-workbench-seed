@@ -42,12 +42,14 @@ class TestHeavyAtomCountEdge:
     """Edge cases for heavy atom count."""
 
     def test_none_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_heavy_atom_count(None)
+        assert "NoneType" in str(exc_info.value)
 
     def test_string_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_heavy_atom_count("C")
+        assert "str" in str(exc_info.value)
 
     def test_explicit_hydrogen_molecule(self):
         """[H][H] parsed with sanitization has 0 heavy atoms."""
@@ -58,7 +60,7 @@ class TestHeavyAtomCountEdge:
     def test_return_type_is_int(self):
         mol = Chem.MolFromSmiles("CCO")
         assert mol is not None
-        assert isinstance(calc_heavy_atom_count(mol), int)
+        assert calc_heavy_atom_count(mol) == 3
 
 
 class TestRingCountKnown:
@@ -96,17 +98,19 @@ class TestRingCountEdge:
     """Edge cases for ring count."""
 
     def test_none_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_ring_count(None)
+        assert "NoneType" in str(exc_info.value)
 
     def test_int_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_ring_count(42)
+        assert "int" in str(exc_info.value)
 
     def test_return_type_is_int(self):
         mol = Chem.MolFromSmiles("c1ccccc1")
         assert mol is not None
-        assert isinstance(calc_ring_count(mol), int)
+        assert calc_ring_count(mol) == 1
 
 
 class TestAromaticRingCountKnown:
@@ -150,12 +154,14 @@ class TestAromaticRingCountEdge:
     """Edge cases for aromatic ring count."""
 
     def test_none_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_aromatic_ring_count(None)
+        assert "NoneType" in str(exc_info.value)
 
     def test_string_raises_type_error(self):
-        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol"):
+        with pytest.raises(TypeError, match="Expected rdkit.Chem.Mol") as exc_info:
             calc_aromatic_ring_count("c1ccccc1")
+        assert "str" in str(exc_info.value)
 
     def test_aromatic_never_exceeds_total_ring_count(self):
         """Aromatic ring count must be <= total ring count for any molecule."""
@@ -167,4 +173,4 @@ class TestAromaticRingCountEdge:
     def test_return_type_is_int(self):
         mol = Chem.MolFromSmiles("c1ccccc1")
         assert mol is not None
-        assert isinstance(calc_aromatic_ring_count(mol), int)
+        assert calc_aromatic_ring_count(mol) == 1
