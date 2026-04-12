@@ -178,9 +178,13 @@ def test_invalid_element_symbol_ignored():
 
 
 def test_sg_number_out_of_range_ignored():
-    """Space group numbers outside 1-230 are ignored."""
+    """Space group numbers outside 1-230 are ignored, defaults preserved."""
     result = parse_materials_constraints("space group 300")
     assert result.space_group_number is None
+    # Verify the out-of-range number did not leak through as a value
+    assert result.space_group_range is None
+    assert result.max_atoms == 20
+    assert abs(result.stability_threshold_ev - 0.1) < 1e-9
 
 
 def test_parse_chemistry_scope_string():
