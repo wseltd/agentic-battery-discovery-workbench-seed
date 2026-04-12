@@ -42,6 +42,16 @@ def test_molecule_request_mandatory_fields() -> None:
             output_count=5,
         )
 
+    # Valid construction succeeds and stores the right values
+    valid = MoleculeRequest(
+        task_type="de_novo", objective="inhibit CDK2",
+        constraints={"MW": "300-450"}, output_count=10,
+    )
+    assert valid.task_type == "de_novo"
+    assert valid.objective == "inhibit CDK2"
+    assert valid.constraints == {"MW": "300-450"}
+    assert valid.output_count == 10
+
 
 def test_molecule_request_defaults() -> None:
     """Default values match the Q2 spec exactly."""
@@ -77,6 +87,11 @@ def test_materials_request_mandatory_fields() -> None:
         MaterialsRequest(
             chemistry_scope="Li-Fe-O", output_count=5, stability_target=-0.5
         )
+
+    # Valid construction succeeds and stores the right values
+    valid = MaterialsRequest(chemistry_scope="Li-Fe-O", output_count=5)
+    assert valid.chemistry_scope == "Li-Fe-O"
+    assert valid.output_count == 5
 
 
 def test_materials_request_defaults() -> None:
