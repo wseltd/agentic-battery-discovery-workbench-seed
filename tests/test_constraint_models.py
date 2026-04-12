@@ -27,6 +27,7 @@ class TestAllowedProperties:
 
     def test_is_frozenset(self):
         assert isinstance(ALLOWED_PROPERTIES, frozenset)
+        assert len(ALLOWED_PROPERTIES) == 8
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +67,9 @@ class TestPropertyConstraintValid:
     def test_slots_prevent_arbitrary_attrs(self):
         """__slots__ prevents adding attributes not in the schema."""
         pc = PropertyConstraint("MW", min_val=100.0, max_val=None)
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError) as exc_info:
             pc.extra = "nope"  # type: ignore[attr-defined]
+        assert "extra" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -84,17 +86,20 @@ class TestPropertyConstraintRejection:
         assert "solubility" in str(exc_info.value)
 
     def test_empty_property_name(self):
-        with pytest.raises(ValueError, match="Unknown property"):
+        with pytest.raises(ValueError, match="Unknown property") as exc_info:
             PropertyConstraint("", min_val=0.0, max_val=None)
+        assert "Allowed" in str(exc_info.value)
 
     def test_case_sensitive_property_name(self):
         """Property names are case-sensitive — 'mw' is not 'MW'."""
-        with pytest.raises(ValueError, match="Unknown property"):
+        with pytest.raises(ValueError, match="Unknown property") as exc_info:
             PropertyConstraint("mw", min_val=100.0, max_val=None)
+        assert "'mw'" in str(exc_info.value)
 
     def test_both_bounds_none(self):
-        with pytest.raises(ValueError, match="at least one of min_val or max_val"):
+        with pytest.raises(ValueError, match="at least one of min_val or max_val") as exc_info:
             PropertyConstraint("MW", min_val=None, max_val=None)
+        assert "'MW'" in str(exc_info.value)
 
     def test_min_greater_than_max(self):
         with pytest.raises(ValueError, match="min_val.*>.*max_val") as exc_info:
@@ -138,8 +143,9 @@ class TestSmartsValid:
 
     def test_frozen(self):
         sc = SubstructureConstraint("[#6]")
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError) as exc_info:
             sc.smarts = "[#7]"  # type: ignore[misc]
+        assert "smarts" in str(exc_info.value).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +157,9 @@ class TestSmartsInvalid:
     """SubstructureConstraint rejects bad SMARTS eagerly."""
 
     def test_empty_smarts(self):
-        with pytest.raises(ValueError, match="must not be empty"):
+        with pytest.raises(ValueError, match="must not be empty") as exc_info:
             SubstructureConstraint("")
+        assert "SMARTS" in str(exc_info.value)
 
     def test_unparseable_smarts(self):
         with pytest.raises(ValueError, match="Invalid SMARTS") as exc_info:
@@ -168,8 +175,9 @@ class TestSmartsInvalid:
         """Whitespace-only is effectively empty."""
         # RDKit treats whitespace SMARTS as unparseable, so this should fail
         # on either the emptiness check or the parse check.
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc_info:
             SubstructureConstraint("   ")
+        assert "SMARTS" in str(exc_info.value) or "Invalid" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
