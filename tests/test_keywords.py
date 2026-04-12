@@ -117,6 +117,11 @@ class TestTypeInvariants:
                 f"STRUCTURED_CONSTRAINT_CUES[{domain!r}] is {type(cues).__name__}, "
                 "expected frozenset"
             )
+        # Value assertions: verify minimum expected sizes to confirm
+        # the sets are populated, not just correctly typed.
+        assert len(SMALL_MOLECULE_KEYWORDS) >= 20
+        assert len(INORGANIC_MATERIALS_KEYWORDS) >= 15
+        assert len(STRUCTURED_CONSTRAINT_CUES) == 2
 
     def test_all_keywords_lowercase(self) -> None:
         all_terms = (
@@ -158,6 +163,9 @@ class TestClassifyToken:
         assert classify_token("banana") is None
         assert classify_token("") is None
         assert classify_token("  ") is None
+        # Contrast: a known token does return a domain string, proving
+        # that None above is a meaningful absence, not a broken function.
+        assert classify_token("smiles") == "small_molecule"
 
     def test_classify_token_case_insensitive(self) -> None:
         assert classify_token("SMILES") == "small_molecule"
@@ -171,12 +179,18 @@ class TestClassifyToken:
             assert result is None, (
                 f"ambiguity term {term!r} returned {result!r} instead of None"
             )
+        # Value check: confirm the ambiguity set has the expected count
+        # so we know we tested all terms, not an empty set.
+        assert len(AMBIGUITY_KEYWORDS) == len(_EXPECTED_AMBIGUITY)
 
     def test_classify_token_ambiguity_case_variants_return_none(self) -> None:
         """Ambiguity guard must hold regardless of casing."""
         assert classify_token("CATALYST") is None
         assert classify_token("Battery Electrolyte") is None
         assert classify_token("PEROVSKITE") is None
+        # Value contrast: uppercase domain keyword does route correctly,
+        # proving the None results above are ambiguity-specific.
+        assert classify_token("CRYSTAL") == "inorganic_materials"
 
     def test_classify_token_every_small_molecule_keyword(self) -> None:
         """Exhaustive: every keyword in the set must classify correctly."""

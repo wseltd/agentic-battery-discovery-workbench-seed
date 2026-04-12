@@ -55,8 +55,9 @@ def test_parse_decimal_range():
 
 def test_parse_invalid_raises_valueerror():
     """Unparseable input must raise ValueError with helpful message."""
-    with pytest.raises(ValueError, match="Cannot parse range"):
+    with pytest.raises(ValueError, match="Cannot parse range") as exc_info:
         parse_range("not a range")
+    assert "not a range" in str(exc_info.value)
 
     with pytest.raises(ValueError, match="Cannot parse range"):
         parse_range("")
