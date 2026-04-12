@@ -53,6 +53,11 @@ def test_banned_words_pattern_respects_word_boundaries():
     # 'approvals' does not contain any banned word at boundaries
     assert BANNED_WORDS_PATTERN.search("approvals") is None
 
+    # Positive control: the bare banned word 'proven' must match
+    match = BANNED_WORDS_PATTERN.search("this is proven wrong")
+    assert match is not None
+    assert match.group().lower() == "proven"
+
 
 def test_approved_wording_no_assurance_language():
     """Approved wording must not use the banned words it polices.
@@ -66,3 +71,8 @@ def test_approved_wording_no_assurance_language():
             f"Approved wording for {label!r} contains banned word "
             f"{match.group()!r}: {wording!r}"
         )
+
+    # Value assertion: verify a known wording string is what we expect
+    assert APPROVED_WORDING["heuristic_estimated"] == (
+        "Estimated via heuristic rules; not experimentally verified."
+    )
