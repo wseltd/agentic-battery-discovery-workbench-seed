@@ -70,20 +70,20 @@ def test_sg_number_boundary_high():
 
 def test_sg_number_out_of_range_zero():
     """SG number 0 is out of range — returns None."""
-    sg, _ = parse_space_group("space group 0", _TEST_SYMBOLS)
-    assert sg is None
+    sg, crystal = parse_space_group("space group 0", _TEST_SYMBOLS)
+    assert (sg, crystal) == (None, None)
 
 
 def test_sg_number_out_of_range_high():
     """SG number 300 is out of range — returns None."""
-    sg, _ = parse_space_group("space group 300", _TEST_SYMBOLS)
-    assert sg is None
+    sg, crystal = parse_space_group("space group 300", _TEST_SYMBOLS)
+    assert (sg, crystal) == (None, None)
 
 
 def test_sg_number_out_of_range_negative():
     """Negative numbers don't match the \\d+ regex, returns None."""
-    sg, _ = parse_space_group("space group -5", _TEST_SYMBOLS)
-    assert sg is None
+    sg, crystal = parse_space_group("space group -5", _TEST_SYMBOLS)
+    assert (sg, crystal) == (None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -120,8 +120,8 @@ def test_sg_symbol_with_slash():
 
 def test_sg_symbol_unknown_not_matched():
     """A symbol not in the dict returns None (no false positives)."""
-    sg, _ = parse_space_group("structure in Cmcm", _TEST_SYMBOLS)
-    assert sg is None
+    sg, crystal = parse_space_group("structure in Cmcm", _TEST_SYMBOLS)
+    assert (sg, crystal) == (None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -186,22 +186,19 @@ def test_sg_symbol_and_crystal_system():
 def test_empty_text_returns_none_none():
     """Empty string returns (None, None)."""
     sg, crystal = parse_space_group("", _TEST_SYMBOLS)
-    assert sg is None
-    assert crystal is None
+    assert (sg, crystal) == (None, None)
 
 
 def test_whitespace_only_returns_none_none():
     """Whitespace-only string returns (None, None)."""
     sg, crystal = parse_space_group("   ", _TEST_SYMBOLS)
-    assert sg is None
-    assert crystal is None
+    assert (sg, crystal) == (None, None)
 
 
 def test_no_match_returns_none_none():
     """Text with no space-group references returns (None, None)."""
     sg, crystal = parse_space_group("generate stable oxides", _TEST_SYMBOLS)
-    assert sg is None
-    assert crystal is None
+    assert (sg, crystal) == (None, None)
 
 
 def test_numeric_preferred_over_symbol():
