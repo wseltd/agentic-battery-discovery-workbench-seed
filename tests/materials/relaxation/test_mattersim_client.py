@@ -150,12 +150,16 @@ def test_relaxation_result_evidence_level_is_ml_relaxed() -> None:
 
 
 def test_relax_returns_relaxation_result() -> None:
-    """relax() returns a RelaxationResult instance."""
+    """relax() returns a RelaxationResult with correct field values."""
     struct = _nacl_structure()
     mocks = _build_mock_modules(converged=True, steps=30, energy=-8.0, n_atoms=2)
     relaxer = MatterSimRelaxer()
     result = _relax_with_mocks(relaxer, struct, mocks)
     assert isinstance(result, RelaxationResult)
+    assert result.energy_eV == pytest.approx(-8.0)
+    assert result.converged is True
+    assert result.steps_taken == 30
+    assert result.evidence_level == "ml_relaxed"
 
 
 def test_relax_converged_true_when_fmax_met() -> None:
@@ -188,8 +192,9 @@ def test_relax_nan_energy_raises_valueerror() -> None:
     struct = _nacl_structure()
     mocks = _build_mock_modules(energy=float("nan"))
     relaxer = MatterSimRelaxer()
-    with pytest.raises(ValueError, match="NaN"):
+    with pytest.raises(ValueError, match="NaN") as exc_info:
         _relax_with_mocks(relaxer, struct, mocks)
+    assert "numerical instability" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
