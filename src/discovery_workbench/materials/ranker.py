@@ -50,11 +50,22 @@ MAX_VOLUME_PER_ATOM = 40.0
 # Default composite-score weights.  Stability dominates because an
 # unstable material is useless regardless of other properties.
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "stability": 0.35,
+    "stability": 0.40,
     "symmetry": 0.20,
-    "complexity": 0.15,
+    "complexity": 0.10,
     "target_satisfaction": 0.30,
 }
+
+# Crystal system names, indexed to match CRYSTAL_SYSTEM_RANGES.
+CRYSTAL_SYSTEM_NAMES: list[str] = [
+    "triclinic", "monoclinic", "orthorhombic", "tetragonal",
+    "trigonal", "hexagonal", "cubic",
+]
+
+# Name-to-range lookup for crystal system matching by name.
+CRYSTAL_SYSTEM_BY_NAME: dict[str, tuple[int, int]] = dict(
+    zip(CRYSTAL_SYSTEM_NAMES, CRYSTAL_SYSTEM_RANGES)
+)
 
 
 # ---------------------------------------------------------------------------
@@ -353,3 +364,165 @@ class MaterialsPropertyRanker:
             rc.rank = i
 
         return ranked
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience function
+# ---------------------------------------------------------------------------
+
+def rank_candidates(
+    candidates: list[dict[str, Any]],
+    weights: dict[str, float] | None = None,
+    stability_threshold: float = STABILITY_THRESHOLD_EV,
+    requested_sg: int | None = None,
+    requested_crystal_system: str | None = None,
+    complexity_bounds: dict[str, float] | None = None,
+    constraints: dict[str, float] | None = None,
+) -> list[RankedCandidate]:
+    """Rank candidate materials by weighted heuristic property scores.
+
+    Parameterised convenience function.  Scores each candidate on stability,
+    symmetry, complexity, and target-property satisfaction, then returns them
+    sorted by descending composite score with 1-based rank positions.
+
+    Unlike MaterialsPropertyRanker.rank_candidates, this function accepts
+    custom scoring parameters (threshold, crystal system, bounds) directly
+    rather than relying on module-level constants.
+
+    Args:
+        candidates: Each dict must have keys: candidate_id, composition,
+            space_group_number, energy_above_hull, num_atoms, volume.
+            Optional: converged (default True), achieved (default {}).
+        weights: Override default component weights.  Keys must be from
+            {"stability", "symmetry", "complexity", "target_satisfaction"}.
+        stability_threshold: Energy-above-hull cutoff in eV/atom.  Candidates
+            with energy below this score linearly from 1.0 to 0.0.
+        requested_sg: Desired space group number for symmetry scoring.
+        requested_crystal_system: Desired crystal system name (e.g. "cubic").
+            Used for symmetry scoring when requested_sg is None.
+        complexity_bounds: Override volume-per-atom bounds.  Recognised keys:
+            min_volume_per_atom, max_volume_per_atom.
+        constraints: Property targets for satisfaction scoring.  Each key is
+            a property name and the value is the minimum acceptable threshold.
+
+    Returns:
+        List of RankedCandidate sorted by composite_score descending,
+        with 1-based rank positions assigned.
+
+    Raises:
+        ValueError: If stability_threshold is not positive, weights contain
+            unknown keys, or candidate data is invalid.
+    """
+    logger.info("rank_candidates called with %d candidates", len(candidates))
+    if stability_threshold <= 0:
+        raise ValueError(
+            f"stability_threshold must be positive, got {stability_threshold}"
+        )
+    if not candidates:
+        return []
+
+    # Reuse class weight normalisation logic
+    ranker = MaterialsPropertyRanker(weights=weights)
+
+    # Resolve volume-per-atom bounds for complexity scoring
+    min_vpa = MIN_VOLUME_PER_ATOM
+    max_vpa = MAX_VOLUME_PER_ATOM
+    if complexity_bounds is not None:
+        min_vpa = complexity_bounds.get(
+            "min_volume_per_atom", MIN_VOLUME_PER_ATOM,
+        )
+        max_vpa = complexity_bounds.get(
+            "max_volume_per_atom", MAX_VOLUME_PER_ATOM,
+        )
+        if min_vpa <= 0 or max_vpa <= 0:
+            raise ValueError("complexity_bounds values must be positive")
+        if min_vpa >= max_vpa:
+            raise ValueError(
+                "min_volume_per_atom must be less than max_volume_per_atom"
+            )
+
+    # Validate crystal system name early to fail before iterating candidates
+    cs_range: tuple[int, int] | None = None
+    if requested_sg is None and requested_crystal_system is not None:
+        cs_lower = requested_crystal_system.lower()
+        if cs_lower not in CRYSTAL_SYSTEM_BY_NAME:
+            raise ValueError(
+                f"Unknown crystal system '{requested_crystal_system}', "
+                f"valid: {sorted(CRYSTAL_SYSTEM_BY_NAME)}"
+            )
+        cs_range = CRYSTAL_SYSTEM_BY_NAME[cs_lower]
+
+    ranked: list[RankedCandidate] = []
+    for cand in candidates:
+        # --- Stability ---
+        # Uses threshold parameter so callers can override the default cutoff
+        energy = cand["energy_above_hull"]
+        converged = cand.get("converged", True)
+        if not converged:
+            stability = NONCONVERGED_STABILITY_SCORE
+        else:
+            if energy < 0:
+                raise ValueError(
+                    f"energy_above_hull must be >= 0, got {energy}"
+                )
+            stability = max(0.0, 1.0 - energy / stability_threshold)
+
+        # --- Symmetry ---
+        if requested_sg is not None:
+            symmetry = compute_symmetry_score(
+                cand["space_group_number"], requested_sg,
+            )
+        elif cs_range is not None:
+            low, high = cs_range
+            sg = cand["space_group_number"]
+            symmetry = 1.0 if low <= sg <= high else 0.0
+        else:
+            symmetry = 1.0  # No preference means no penalty
+
+        # --- Complexity ---
+        # Uses bounds parameters so callers can override the density range
+        num_atoms = cand["num_atoms"]
+        volume = cand["volume"]
+        if num_atoms <= 0:
+            raise ValueError(f"num_atoms must be positive, got {num_atoms}")
+        if volume <= 0:
+            raise ValueError(f"volume must be positive, got {volume}")
+        vpa = volume / num_atoms
+        if vpa < min_vpa:
+            complexity = max(0.0, vpa / min_vpa)
+        elif vpa > max_vpa:
+            complexity = max(0.0, max_vpa / vpa)
+        else:
+            complexity = 1.0
+
+        # --- Target satisfaction ---
+        if constraints:
+            target_sat = compute_target_satisfaction_score(
+                constraints, cand.get("achieved", {}),
+            )
+        else:
+            target_sat = 1.0
+
+        composite = (
+            ranker.weights["stability"] * stability
+            + ranker.weights["symmetry"] * symmetry
+            + ranker.weights["complexity"] * complexity
+            + ranker.weights["target_satisfaction"] * target_sat
+        )
+
+        ranked.append(RankedCandidate(
+            candidate_id=cand["candidate_id"],
+            composition=cand["composition"],
+            space_group_number=cand["space_group_number"],
+            stability_score=stability,
+            symmetry_score=symmetry,
+            complexity_score=complexity,
+            target_satisfaction_score=target_sat,
+            composite_score=composite,
+        ))
+
+    ranked.sort(key=lambda r: (-r.composite_score, r.candidate_id))
+    for i, rc in enumerate(ranked, start=1):
+        rc.rank = i
+
+    return ranked
