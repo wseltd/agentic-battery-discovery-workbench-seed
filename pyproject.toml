@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mattergen = ["mattergen"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",
