@@ -18,6 +18,7 @@ from typing import Any
 from rdkit import Chem, RDConfig
 from rdkit.Chem import Descriptors, QED, DataStructs, rdFingerprintGenerator
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
+from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
 from rdkit.ML.Cluster import Butina
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,14 @@ def _sa_score(mol: Chem.Mol) -> float:
     return _sa_module.calculateScore(mol)
 
 
+def _mol_to_inchikey(mol: Chem.Mol) -> str | None:
+    """Convert an RDKit Mol to its InChIKey, or None on failure."""
+    inchi = MolToInchi(mol)
+    if inchi is None:
+        return None
+    return InchiToInchiKey(inchi)
+
+
 # ---------------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------------
@@ -202,24 +211,40 @@ def compute_uniqueness(
 
 def compute_novelty(
     unique_smiles: list[str],
-    known_smiles: set[str],
+    reference_inchikeys: set[str],
 ) -> tuple[int, float, list[str]]:
     """Identify which unique SMILES are absent from a known reference set.
 
+    Converts each SMILES to an InChIKey via RDKit and checks membership
+    in reference_inchikeys.  InChIKey comparison is preferred over raw
+    SMILES because it is canonicalisation-independent and matches the
+    standard cheminformatics de-duplication approach.
+
     Args:
         unique_smiles: Deduplicated canonical SMILES.
-        known_smiles: Set of known canonical SMILES to compare against.
+        reference_inchikeys: Set of known InChIKeys to compare against.
 
     Returns:
         Tuple of (novel_count, novelty_pct, novel_smiles).
         novelty_pct is novel_count / len(unique_smiles) * 100,
-        or 0.0 if input is empty.
+        or 0.0 if input is empty.  Molecules that fail InChIKey
+        conversion are treated as novel (benefit of the doubt).
     """
     logger.info(
         "compute_novelty called with %d unique, %d known",
-        len(unique_smiles), len(known_smiles),
+        len(unique_smiles), len(reference_inchikeys),
     )
-    novel = [smi for smi in unique_smiles if smi not in known_smiles]
+    novel: list[str] = []
+    for smi in unique_smiles:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            # Unparseable — should not happen after validity, but be safe
+            novel.append(smi)
+            continue
+        ik = _mol_to_inchikey(mol)
+        if ik is None or ik not in reference_inchikeys:
+            novel.append(smi)
+
     total = len(unique_smiles)
     pct = (len(novel) / total * 100.0) if total > 0 else 0.0
 
@@ -228,38 +253,39 @@ def compute_novelty(
 
 def compute_target_satisfaction(
     smiles: list[str],
-    targets: dict[str, float],
+    constraints: dict[str, tuple[float | None, float | None]],
 ) -> float:
-    """Compute fraction of molecules satisfying all property targets.
+    """Compute fraction of molecules satisfying all property constraint windows.
 
-    Each target maps a property name to a minimum acceptable value.
-    A molecule "satisfies" a target if its computed property value
-    is >= the threshold.  Returns the fraction of molecules that
-    meet ALL targets simultaneously.
+    Each constraint maps a property name to a ``(min, max)`` window.
+    A molecule satisfies a constraint when ``min <= value <= max``.
+    Either bound can be ``None`` for an open-ended window (e.g.
+    ``(200.0, None)`` means MW >= 200 with no upper limit).
 
     Supported property names: qed, mw, logp, tpsa, hbd, hba.
 
     Args:
         smiles: Canonical SMILES to evaluate.
-        targets: Property name to minimum threshold.  Empty dict
-            means no constraints (returns 1.0 unless smiles is empty).
+        constraints: Property name to ``(min, max)`` window.  Empty
+            dict means no constraints (returns 1.0 unless smiles is
+            empty).
 
     Returns:
         Fraction in [0.0, 1.0].
 
     Raises:
-        ValueError: If a target property name is not supported.
+        ValueError: If a constraint property name is not supported.
     """
     logger.info(
-        "compute_target_satisfaction: %d molecules, %d targets",
-        len(smiles), len(targets),
+        "compute_target_satisfaction: %d molecules, %d constraints",
+        len(smiles), len(constraints),
     )
-    if not targets:
+    if not constraints:
         return 1.0
     if not smiles:
         return 0.0
 
-    for prop in targets:
+    for prop in constraints:
         if prop not in _PROPERTY_CALCULATORS:
             raise ValueError(
                 f"Unknown property {prop!r}, "
@@ -272,9 +298,12 @@ def compute_target_satisfaction(
         if mol is None:
             continue
         all_met = True
-        for prop, threshold in targets.items():
+        for prop, (lo, hi) in constraints.items():
             value = _PROPERTY_CALCULATORS[prop](mol)
-            if value < threshold:
+            if lo is not None and value < lo:
+                all_met = False
+                break
+            if hi is not None and value > hi:
                 all_met = False
                 break
         if all_met:
@@ -383,8 +412,8 @@ def compute_shortlist_quality(
 
 def compute_molecular_benchmarks(
     smiles: list[str],
-    known_smiles: set[str],
-    targets: dict[str, float],
+    reference_inchikeys: set[str],
+    constraints: dict[str, tuple[float | None, float | None]],
 ) -> MolecularBenchmarkResult:
     """Run the full molecular benchmark pipeline.
 
@@ -393,9 +422,9 @@ def compute_molecular_benchmarks(
 
     Args:
         smiles: Raw generated SMILES strings.
-        known_smiles: Set of known canonical SMILES (for novelty).
-        targets: Property name to minimum threshold (for target
-            satisfaction).  Empty dict means no constraints.
+        reference_inchikeys: Set of known InChIKeys (for novelty).
+        constraints: Property name to ``(min, max)`` window (for
+            target satisfaction).  Empty dict means no constraints.
 
     Returns:
         MolecularBenchmarkResult with all metrics populated.
@@ -409,9 +438,9 @@ def compute_molecular_benchmarks(
         valid_canonical,
     )
     novel_count, novelty_pct, novel_smi = compute_novelty(
-        unique_smi, known_smiles,
+        unique_smi, reference_inchikeys,
     )
-    target_sat = compute_target_satisfaction(novel_smi, targets)
+    target_sat = compute_target_satisfaction(novel_smi, constraints)
     div_mean, div_std = compute_internal_diversity(novel_smi)
     pains_pct, med_qed, med_sa, clusters = compute_shortlist_quality(
         novel_smi,

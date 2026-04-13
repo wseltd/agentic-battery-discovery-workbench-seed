@@ -15,6 +15,11 @@ from discovery_workbench.molecules.benchmarks import (
     compute_validity,
 )
 
+# Pre-computed InChIKeys to avoid rdkit imports in test code.
+INCHIKEY_ETHANOL = "LFQSCWFLJHTTHZ-UHFFFAOYSA-N"   # CCO
+INCHIKEY_ETHYLAMINE = "QUSNBJAOOMFDIB-UHFFFAOYSA-N"  # CCN
+INCHIKEY_BENZENE = "UHOVQNZJYSORNB-UHFFFAOYSA-N"    # c1ccccc1
+
 
 # ---------------------------------------------------------------------------
 # Validity
@@ -104,10 +109,10 @@ class TestUniqueness:
 # ---------------------------------------------------------------------------
 
 class TestNovelty:
-    """Tests for compute_novelty — set-difference against known SMILES."""
+    """Tests for compute_novelty — InChIKey set-difference against reference."""
 
     def test_novelty_all_novel(self) -> None:
-        """Empty known set means everything is novel."""
+        """Empty reference set means everything is novel."""
         count, pct, novel = compute_novelty(
             ["CCO", "CCN", "c1ccccc1"], set(),
         )
@@ -116,20 +121,20 @@ class TestNovelty:
         assert novel == ["CCO", "CCN", "c1ccccc1"]
 
     def test_novelty_some_known(self) -> None:
-        """Known molecules are excluded from the novel set."""
+        """Molecules whose InChIKeys are in the reference set are excluded."""
         count, pct, novel = compute_novelty(
             ["CCO", "CCN", "c1ccccc1"],
-            {"CCO", "c1ccccc1"},
+            {INCHIKEY_ETHANOL, INCHIKEY_BENZENE},
         )
         assert count == 1
         assert pct == pytest.approx(33.333, rel=0.01)
         assert novel == ["CCN"]
 
     def test_novelty_all_known(self) -> None:
-        """All molecules in known set gives 0% novelty."""
+        """All InChIKeys in reference set gives 0% novelty."""
         count, pct, novel = compute_novelty(
             ["CCO", "CCN"],
-            {"CCO", "CCN"},
+            {INCHIKEY_ETHANOL, INCHIKEY_ETHYLAMINE},
         )
         assert count == 0
         assert pct == pytest.approx(0.0)
@@ -141,45 +146,59 @@ class TestNovelty:
 # ---------------------------------------------------------------------------
 
 class TestTargetSatisfaction:
-    """Tests for compute_target_satisfaction — property threshold checking."""
+    """Tests for compute_target_satisfaction — (min, max) window checking."""
 
     def test_target_satisfaction_all_met(self) -> None:
-        """All molecules exceed a low MW threshold — 100% satisfaction."""
-        # Ethanol MW ~46, ethylamine MW ~45, benzene MW ~78 — all > 30
+        """All molecules within a wide MW window — 100% satisfaction."""
+        # Ethanol MW ~46, ethylamine MW ~45, benzene MW ~78 — all in [30, 500]
         result = compute_target_satisfaction(
             ["CCO", "CCN", "c1ccccc1"],
-            {"mw": 30.0},
+            {"mw": (30.0, 500.0)},
         )
         assert result == pytest.approx(1.0)
 
     def test_target_satisfaction_none_met(self) -> None:
-        """No molecule exceeds a very high MW threshold — 0% satisfaction."""
+        """No molecule within an impossibly high MW window — 0%."""
         result = compute_target_satisfaction(
             ["CCO", "CCN"],
-            {"mw": 10000.0},
+            {"mw": (10000.0, None)},
         )
         assert result == pytest.approx(0.0)
 
     def test_target_satisfaction_partial(self) -> None:
-        """Only molecules above the threshold count as satisfied.
+        """Only molecules within the window count as satisfied.
 
-        Ethanol MW ~46 < 100 (fails), aspirin MW ~180 >= 100 (passes).
+        Ethanol MW ~46 < 100 (fails), aspirin MW ~180 in [100, 500] (passes).
         """
         result = compute_target_satisfaction(
             ["CCO", "CC(=O)Oc1ccccc1C(=O)O"],
-            {"mw": 100.0},
+            {"mw": (100.0, 500.0)},
         )
         assert result == pytest.approx(0.5)
 
+    def test_target_satisfaction_upper_bound_excludes(self) -> None:
+        """Max bound excludes molecules above the ceiling.
+
+        Benzene MW ~78 passes (78 <= 80), ethanol MW ~46 passes,
+        aspirin MW ~180 fails (180 > 80).
+        """
+        result = compute_target_satisfaction(
+            ["CCO", "c1ccccc1", "CC(=O)Oc1ccccc1C(=O)O"],
+            {"mw": (None, 80.0)},
+        )
+        assert result == pytest.approx(2.0 / 3.0)
+
     def test_target_satisfaction_empty_targets_returns_one(self) -> None:
-        """Empty targets dict is vacuously satisfied → 1.0."""
+        """Empty constraints dict is vacuously satisfied → 1.0."""
         result = compute_target_satisfaction(["CCO"], {})
         assert result == pytest.approx(1.0)
 
     def test_target_satisfaction_unknown_property_raises(self) -> None:
         """Requesting an unsupported property raises ValueError."""
         with pytest.raises(ValueError, match="Unknown property") as exc_info:
-            compute_target_satisfaction(["CCO"], {"bogus_property": 1.0})
+            compute_target_satisfaction(
+                ["CCO"], {"bogus_property": (0.0, 1.0)},
+            )
         assert "bogus_property" in str(exc_info.value)
 
 
@@ -296,10 +315,10 @@ class TestBenchmarksEndToEnd:
         """Full pipeline with known inputs and value assertions.
 
         Input: 5 SMILES with 1 invalid and 1 duplicate.
-        Known set contains benzene.
+        Reference set contains benzene's InChIKey.
         """
         smiles = ["CCO", "CCN", "c1ccccc1", "invalid", "CCO"]
-        known = {"c1ccccc1"}
+        known = {INCHIKEY_BENZENE}
         result = compute_molecular_benchmarks(smiles, known, {})
 
         # Validity: 4 parse ok out of 5
