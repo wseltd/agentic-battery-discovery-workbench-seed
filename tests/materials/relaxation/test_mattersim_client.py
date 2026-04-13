@@ -276,5 +276,5 @@ def test_relaxer_lazy_import() -> None:
         assert relaxer.fmax == pytest.approx(0.05)
     # Calling relax should trigger the import and fail.
     with patch.dict("sys.modules", {"mattersim": None, "mattersim.forcefield": None}):
-        with pytest.raises(ImportError, match="MatterSim is not installed"):
+        with pytest.raises(ImportError, match="MatterSim and ASE are required"):
             relaxer.relax(_nacl_structure())
