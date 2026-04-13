@@ -236,6 +236,28 @@ def test_warnings_on_zero_validity():
     assert any("validity" in w.lower() for w in result.warnings)
 
 
+def test_warning_on_zero_total_generated():
+    """Zero total_generated is a suspicious condition that must produce a warning."""
+    annex_input = _make_annex_input(
+        candidates=[],
+        dft_paths=[],
+        total_generated=0,
+        validity_count=0,
+        uniqueness_count=0,
+        novelty_count=0,
+    )
+    result = build_materials_annex(annex_input)
+    assert any("zero structures generated" in w.lower() for w in result.warnings)
+
+
+def test_warning_on_empty_dft_paths_with_candidates():
+    """Missing DFT paths when candidates exist must produce a warning."""
+    candidates = [_make_candidate()]
+    annex_input = _make_annex_input(candidates=candidates, dft_paths=[])
+    result = build_materials_annex(annex_input)
+    assert any("no dft handoff paths" in w.lower() for w in result.warnings)
+
+
 def test_generator_section_does_not_mutate_input():
     """Generator section must be a copy — mutating it must not affect input."""
     config = {"checkpoint": "v1", "conditioning_mode": "comp"}

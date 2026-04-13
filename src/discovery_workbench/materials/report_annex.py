@@ -140,6 +140,11 @@ def build_materials_annex(annex_input: MaterialsAnnexInput) -> MaterialsAnnex:
             entry["paths"] = [str(p) for p in matching_paths]
         dft_handoff_summary.append(entry)
 
+    if total == 0:
+        warnings.append(
+            "Zero structures generated — verify generator configuration"
+        )
+
     if total > 0 and annex_input.validity_count == 0:
         warnings.append(
             f"No candidates passed validity checks out of "
@@ -150,6 +155,12 @@ def build_materials_annex(annex_input: MaterialsAnnexInput) -> MaterialsAnnex:
         warnings.append(
             "All unique candidates matched existing database entries — "
             "zero novel structures found"
+        )
+
+    if annex_input.ranked_candidates and not annex_input.dft_handoff_paths:
+        warnings.append(
+            "No DFT handoff paths provided for "
+            f"{len(annex_input.ranked_candidates)} ranked candidates"
         )
 
     return MaterialsAnnex(
