@@ -70,7 +70,12 @@ class MatterSimRelaxer:
         self.fmax = fmax
         self.max_steps = max_steps
 
-    def relax(self, structure: Structure) -> RelaxationResult:
+    def relax(
+        self,
+        structure: Structure,
+        fmax: float = _DEFAULT_FMAX_EV_ANG,
+        max_steps: int = _DEFAULT_MAX_STEPS,
+    ) -> RelaxationResult:
         """Relax a crystal structure using MatterSim's ML potential.
 
         Converts the pymatgen Structure to an ASE Atoms object, attaches
@@ -79,6 +84,8 @@ class MatterSimRelaxer:
 
         Args:
             structure: Input pymatgen Structure to relax.
+            fmax: Force convergence criterion in eV/Å.
+            max_steps: Maximum LBFGS iterations before stopping.
 
         Returns:
             RelaxationResult with relaxed geometry and energetics.
@@ -86,20 +93,24 @@ class MatterSimRelaxer:
         Raises:
             ImportError: If mattersim is not installed.
             TypeError: If *structure* is not a pymatgen Structure.
-            ValueError: If the relaxed energy is NaN (indicates calculator
-                failure or numerical instability).
+            ValueError: If fmax is not positive, max_steps < 1, or the
+                relaxed energy is NaN.
         """
         if not isinstance(structure, Structure):
             raise TypeError(
                 f"Expected pymatgen Structure, got {type(structure).__name__}"
             )
+        if fmax <= 0:
+            raise ValueError(f"fmax must be positive, got {fmax}")
+        if max_steps < 1:
+            raise ValueError(f"max_steps must be >= 1, got {max_steps}")
 
         logger.info(
             "Relaxing %s (%d sites), fmax=%.4f, max_steps=%d",
             structure.composition.reduced_formula,
             len(structure),
-            self.fmax,
-            self.max_steps,
+            fmax,
+            max_steps,
         )
 
         try:
@@ -124,7 +135,7 @@ class MatterSimRelaxer:
 
         filtered = FrechetCellFilter(atoms)
         optimiser = LBFGS(filtered, logfile=None)
-        converged = optimiser.run(fmax=self.fmax, steps=self.max_steps)
+        converged = optimiser.run(fmax=fmax, steps=max_steps)
         steps_taken = optimiser.get_number_of_steps()
 
         energy = atoms.get_potential_energy()
