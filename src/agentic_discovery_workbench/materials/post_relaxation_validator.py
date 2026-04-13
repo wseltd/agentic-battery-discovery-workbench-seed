@@ -17,8 +17,11 @@ from dataclasses import dataclass
 
 import numpy as np
 from pymatgen.core import Element, Structure
-from pymatgen.core.structure_matcher import StructureMatcher
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+from agentic_discovery_workbench.materials.duplicate_detector import (
+    MaterialsDuplicateDetector,
+)
 
 from agentic_discovery.materials.validation import MIN_DISTANCE_COVALENT_RATIO
 
@@ -184,34 +187,6 @@ def _check_symmetry(
     return pre_sg, post_sg, pre_sg != post_sg
 
 
-def _find_duplicate(
-    struct_id: str,
-    structure: Structure,
-    canonical: list[tuple[str, Structure]],
-    matcher: StructureMatcher,
-) -> str | None:
-    """Find the first earlier canonical structure that matches.
-
-    Args:
-        struct_id: Identifier of the query structure (for logging).
-        structure: Post-relaxation query structure.
-        canonical: Previously seen non-duplicate structures.
-        matcher: Configured StructureMatcher.
-
-    Returns:
-        ID of the first matching canonical structure, or None.
-    """
-    for earlier_id, earlier_struct in canonical:
-        if matcher.fit(structure, earlier_struct):
-            logger.info(
-                "Post-relax structure %s is duplicate of %s",
-                struct_id,
-                earlier_id,
-            )
-            return earlier_id
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -266,11 +241,18 @@ def validate_post_relaxation(
     if not structures:
         return []
 
-    matcher = StructureMatcher()
-    canonical: list[tuple[str, Structure]] = []
+    # Batch duplicate detection via MaterialsDuplicateDetector (T038).
+    # Uses Niggli reduction + StructureMatcher with pymatgen-default
+    # tolerances (ltol=0.2, stol=0.3, angle_tol=5).
+    post_relax_pairs = [(sid, post) for sid, _pre, post in structures]
+    detector = MaterialsDuplicateDetector()
+    dup_results = detector.detect_duplicates_post_relax(post_relax_pairs)
+
     reports: list[PostRelaxationReport] = []
 
-    for struct_id, pre_relax, post_relax in structures:
+    for (struct_id, pre_relax, post_relax), dup_result in zip(
+        structures, dup_results
+    ):
         cov_valid, min_dist = _check_distances_post_relax(post_relax)
         distance_valid = cov_valid and min_dist >= min_distance_threshold
 
@@ -278,13 +260,8 @@ def validate_post_relaxation(
             pre_relax, post_relax, symprec
         )
 
-        duplicate_of = _find_duplicate(
-            struct_id, post_relax, canonical, matcher
-        )
-        is_dup = duplicate_of is not None
-
-        if not is_dup:
-            canonical.append((struct_id, post_relax))
+        is_dup = dup_result.is_duplicate
+        duplicate_of = dup_result.duplicate_of
 
         passed = distance_valid and not is_dup
 
