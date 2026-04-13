@@ -180,33 +180,43 @@ def test_report_fields_populated() -> None:
 
 def test_passed_flag_logic() -> None:
     """The __post_init__ invariant: passed = distance_valid AND NOT is_duplicate."""
-    # Valid construction: all four boolean combinations
-    PostRelaxationReport(
+    # Valid: distance_valid=True, is_duplicate=False → passed=True
+    r_a = PostRelaxationReport(
         structure_id="a", distance_valid=True, min_distance_angstrom=2.0,
         pre_relax_spacegroup=225, post_relax_spacegroup=225,
         symmetry_changed=False, is_duplicate=False, duplicate_of=None,
         passed=True,
     )
-    PostRelaxationReport(
+    assert r_a.passed is True
+
+    # Valid: distance_valid=False, is_duplicate=False → passed=False
+    r_b = PostRelaxationReport(
         structure_id="b", distance_valid=False, min_distance_angstrom=0.1,
         pre_relax_spacegroup=225, post_relax_spacegroup=225,
         symmetry_changed=False, is_duplicate=False, duplicate_of=None,
         passed=False,
     )
-    PostRelaxationReport(
+    assert r_b.passed is False
+
+    # Valid: distance_valid=True, is_duplicate=True → passed=False
+    r_c = PostRelaxationReport(
         structure_id="c", distance_valid=True, min_distance_angstrom=2.0,
         pre_relax_spacegroup=225, post_relax_spacegroup=225,
         symmetry_changed=False, is_duplicate=True, duplicate_of="x",
         passed=False,
     )
-    PostRelaxationReport(
+    assert r_c.passed is False
+
+    # Valid: distance_valid=False, is_duplicate=True → passed=False
+    r_d = PostRelaxationReport(
         structure_id="d", distance_valid=False, min_distance_angstrom=0.1,
         pre_relax_spacegroup=225, post_relax_spacegroup=225,
         symmetry_changed=False, is_duplicate=True, duplicate_of="x",
         passed=False,
     )
+    assert r_d.passed is False
 
-    # Invalid: passed=True when distance_valid=False
+    # Invalid: passed=True when distance_valid=False — __post_init__ rejects
     with pytest.raises(ValueError, match="passed must equal"):
         PostRelaxationReport(
             structure_id="e", distance_valid=False, min_distance_angstrom=0.1,
@@ -215,7 +225,7 @@ def test_passed_flag_logic() -> None:
             passed=True,
         )
 
-    # Invalid: passed=True when is_duplicate=True
+    # Invalid: passed=True when is_duplicate=True — __post_init__ rejects
     with pytest.raises(ValueError, match="passed must equal"):
         PostRelaxationReport(
             structure_id="f", distance_valid=True, min_distance_angstrom=2.0,
