@@ -42,10 +42,10 @@ def sample_vasp_params():
 # ---------------------------------------------------------------------------
 
 def test_export_vasp_params_writes_json(sample_vasp_params, tmp_path):
-    """Exported file must contain valid JSON."""
+    """Exported file must contain valid JSON matching the input dict."""
     path = export_vasp_params(sample_vasp_params, tmp_path, "cand_100")
     loaded = json.loads(path.read_text())
-    assert isinstance(loaded, dict)
+    assert loaded == sample_vasp_params
 
 
 def test_export_vasp_params_returns_correct_path(sample_vasp_params, tmp_path):
@@ -96,16 +96,18 @@ def test_export_vasp_params_with_magmom(tmp_path):
 def test_export_vasp_params_empty_candidate_id_raises(
     sample_vasp_params, tmp_path
 ):
-    """Empty candidate_id must raise ValueError."""
-    with pytest.raises(ValueError, match="non-empty string"):
+    """Empty candidate_id must raise ValueError with actionable message."""
+    with pytest.raises(ValueError, match="non-empty string") as exc_info:
         export_vasp_params(sample_vasp_params, tmp_path, "")
+    assert "candidate_id" in str(exc_info.value)
 
 
 def test_export_vasp_params_nonexistent_dir_raises(sample_vasp_params, tmp_path):
-    """Non-existent output_dir must raise ValueError."""
+    """Non-existent output_dir must raise ValueError naming the bad path."""
     bad_dir = tmp_path / "no_such_dir"
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(ValueError, match="does not exist") as exc_info:
         export_vasp_params(sample_vasp_params, bad_dir, "cand_999")
+    assert "no_such_dir" in str(exc_info.value)
 
 
 def test_export_vasp_params_empty_dict(tmp_path):
