@@ -593,19 +593,21 @@ class TestInputValidation:
     def test_batch_size_zero_raises(self) -> None:
         """batch_size < 1 is rejected at the boundary."""
         ctrl = AgentLoopController()
-        with pytest.raises(ValueError, match="batch_size must be >= 1"):
+        with pytest.raises(ValueError, match="batch_size must be >= 1") as exc_info:
             ctrl.run(
                 LoopRequest(batch_size=0),
                 _MockPipeline(),
                 _make_budget(),
             )
+        assert "0" in str(exc_info.value)
 
     def test_output_count_zero_raises(self) -> None:
         """output_count < 1 is rejected at the boundary."""
         ctrl = AgentLoopController()
-        with pytest.raises(ValueError, match="output_count must be >= 1"):
+        with pytest.raises(ValueError, match="output_count must be >= 1") as exc_info:
             ctrl.run(
                 LoopRequest(output_count=0),
                 _MockPipeline(),
                 _make_budget(),
             )
+        assert "0" in str(exc_info.value)
