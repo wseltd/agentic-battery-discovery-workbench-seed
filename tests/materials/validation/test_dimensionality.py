@@ -91,6 +91,7 @@ def test_result_fields_populated() -> None:
 def test_dimensionality_returns_integer() -> None:
     result = check_dimensionality(_nacl_structure())
     assert isinstance(result.dimensionality, int)
+    assert result.dimensionality == 3
 
 
 def test_component_count_positive() -> None:
@@ -108,20 +109,24 @@ def test_method_field_is_larsen() -> None:
 # ---------------------------------------------------------------------------
 
 def test_dimensionality_out_of_range_raises() -> None:
-    with pytest.raises(ValueError, match="dimensionality must be between"):
+    with pytest.raises(ValueError, match="dimensionality must be between") as exc_info:
         DimensionalityResult(dimensionality=4, is_3d=False, component_count=1, method="larsen")
+    assert "4" in str(exc_info.value)
 
 
 def test_dimensionality_negative_raises() -> None:
-    with pytest.raises(ValueError, match="dimensionality must be between"):
+    with pytest.raises(ValueError, match="dimensionality must be between") as exc_info:
         DimensionalityResult(dimensionality=-1, is_3d=False, component_count=1, method="larsen")
+    assert "-1" in str(exc_info.value)
 
 
 def test_negative_component_count_raises() -> None:
-    with pytest.raises(ValueError, match="component_count must be >= 0"):
+    with pytest.raises(ValueError, match="component_count must be >= 0") as exc_info:
         DimensionalityResult(dimensionality=3, is_3d=True, component_count=-1, method="larsen")
+    assert "-1" in str(exc_info.value)
 
 
 def test_type_error_on_non_structure() -> None:
-    with pytest.raises(TypeError, match="Expected pymatgen Structure"):
+    with pytest.raises(TypeError, match="Expected pymatgen Structure") as exc_info:
         check_dimensionality({"not": "a structure"})  # type: ignore[arg-type]
+    assert "dict" in str(exc_info.value)
