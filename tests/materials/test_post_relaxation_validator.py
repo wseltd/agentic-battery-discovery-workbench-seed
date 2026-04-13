@@ -7,7 +7,10 @@ from unittest.mock import patch
 import pytest
 from pymatgen.core import Lattice, Structure
 
+from pymatgen.core import Element
+
 from agentic_discovery_workbench.materials.post_relaxation_validator import (
+    POST_RELAX_COVALENT_RATIO,
     PostRelaxationReport,
     validate_post_relaxation,
 )
@@ -291,33 +294,35 @@ def test_batch_validation_mixed_results() -> None:
 
 
 def test_distance_threshold_boundary() -> None:
-    """Distance exactly at threshold passes; just below fails."""
-    threshold = 1.0
+    """Distance at covalent-ratio threshold passes; just below fails."""
     pre = _nacl_rocksalt()
 
-    at_threshold = _two_atom_structure(1.0)
-    below = _two_atom_structure(0.99)
-    above = _two_atom_structure(1.01)
+    # Si-Si covalent-ratio threshold:
+    # POST_RELAX_COVALENT_RATIO * (r_Si + r_Si)
+    si_radius = Element("Si").atomic_radius
+    assert si_radius is not None
+    cov_threshold = POST_RELAX_COVALENT_RATIO * 2 * float(si_radius)
 
-    reports = validate_post_relaxation(
-        [
-            ("at", pre, at_threshold),
-            ("below", pre, below),
-            ("above", pre, above),
-        ],
-        min_distance_threshold=threshold,
-    )
+    at_threshold = _two_atom_structure(cov_threshold)
+    below = _two_atom_structure(cov_threshold - 0.01)
+    above = _two_atom_structure(cov_threshold + 0.01)
 
-    # Exactly at threshold: min_dist >= threshold → True
+    reports = validate_post_relaxation([
+        ("at", pre, at_threshold),
+        ("below", pre, below),
+        ("above", pre, above),
+    ])
+
+    # Exactly at threshold: dist >= threshold → passes
     assert reports[0].distance_valid is True
     assert reports[0].min_distance_angstrom == pytest.approx(
-        threshold, abs=0.02
+        cov_threshold, abs=0.02
     )
 
     # Just below: fails
     assert reports[1].distance_valid is False
-    assert reports[1].min_distance_angstrom < threshold
+    assert reports[1].min_distance_angstrom < cov_threshold
 
     # Just above: passes
     assert reports[2].distance_valid is True
-    assert reports[2].min_distance_angstrom > threshold
+    assert reports[2].min_distance_angstrom > cov_threshold

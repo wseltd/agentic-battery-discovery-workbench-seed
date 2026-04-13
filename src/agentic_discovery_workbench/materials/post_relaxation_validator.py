@@ -16,9 +16,11 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
-from pymatgen.core import Structure
+from pymatgen.core import Element, Structure
 from pymatgen.core.structure_matcher import StructureMatcher
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+from agentic_discovery.materials.validation import MIN_DISTANCE_COVALENT_RATIO
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +28,15 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-# Minimum interatomic distance (Å) below which a relaxed structure is
-# considered to have collapsed or overlapping atoms.  0.5 Å is well
-# below any physical bond length; anything closer is numerical junk.
+# Hard floor for minimum interatomic distance (Å).  Anything below this
+# is numerical junk regardless of element pair.
 DEFAULT_MIN_DISTANCE_THRESHOLD: float = 0.5
+
+# Fraction of summed covalent radii below which two atoms in a relaxed
+# structure are considered unphysically close.  Tighter than the
+# pre-relaxation ratio (0.5) because relaxed structures should not
+# retain compressed bonds.
+POST_RELAX_COVALENT_RATIO: float = max(MIN_DISTANCE_COVALENT_RATIO, 0.7)
 
 # Default symmetry precision for SpacegroupAnalyzer (Å).  Applied
 # identically to both pre- and post-relaxation phases so that the
@@ -84,22 +91,57 @@ class PostRelaxationReport:
 # ---------------------------------------------------------------------------
 
 
-def _get_min_distance(structure: Structure) -> float:
-    """Compute the minimum pairwise interatomic distance.
+def _check_distances_post_relax(relaxed: Structure) -> tuple[bool, float]:
+    """Check interatomic distances against covalent-radii-based threshold.
 
-    Uses pymatgen's periodic-aware distance matrix (minimum-image convention).
+    Uses pymatgen Element.atomic_radius — the same covalent-radius source as
+    the pre-relaxation validator — but applies POST_RELAX_COVALENT_RATIO
+    (0.7) instead of the pre-relaxation ratio (0.5).
 
     Args:
-        structure: Pymatgen Structure.
+        relaxed: Post-relaxation pymatgen Structure.
 
     Returns:
-        Minimum interatomic distance in angstroms, or inf if fewer than 2 atoms.
+        Tuple of (distance_valid, min_distance_angstrom).  distance_valid is
+        True iff every atom pair exceeds its per-pair covalent-radii threshold.
+        min_distance_angstrom is the shortest pairwise distance (periodic-aware),
+        or inf if the structure has fewer than 2 atoms.
     """
-    if len(structure) < 2:
-        return float("inf")
-    dm = structure.distance_matrix
-    np.fill_diagonal(dm, np.inf)
-    return float(np.min(dm))
+    n = len(relaxed)
+    if n < 2:
+        return True, float("inf")
+
+    dist_matrix = relaxed.distance_matrix
+    np.fill_diagonal(dist_matrix, np.inf)
+    min_dist = float(np.min(dist_matrix))
+
+    cov_radii: list[float] = []
+    for site in relaxed:
+        radius = Element(site.specie.symbol).atomic_radius
+        if radius is None:
+            raise ValueError(
+                f"No atomic radius data for {site.specie.symbol}; "
+                f"cannot compute covalent-ratio distance threshold"
+            )
+        cov_radii.append(float(radius))
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            threshold = POST_RELAX_COVALENT_RATIO * (
+                cov_radii[i] + cov_radii[j]
+            )
+            if dist_matrix[i, j] < threshold:
+                logger.info(
+                    "Post-relax distance violation: %s(#%d)-%s(#%d) "
+                    "%.4f Å < %.4f Å threshold",
+                    relaxed[i].specie.symbol, i,
+                    relaxed[j].specie.symbol, j,
+                    dist_matrix[i, j],
+                    threshold,
+                )
+                return False, min_dist
+
+    return True, min_dist
 
 
 def _get_spacegroup_number(structure: Structure, symprec: float) -> int:
@@ -159,7 +201,8 @@ def validate_post_relaxation(
 
     For each ``(id, pre_relax, post_relax)`` triple:
 
-    1. Compute the minimum interatomic distance in the post-relax structure.
+    1. Check interatomic distances against covalent-radii-based threshold
+       (POST_RELAX_COVALENT_RATIO) and a hard floor (min_distance_threshold).
     2. Compare spacegroups before and after relaxation (same *symprec*).
     3. Check for duplicates among post-relax structures via StructureMatcher.
 
@@ -168,8 +211,9 @@ def validate_post_relaxation(
 
     Args:
         structures: List of ``(structure_id, pre_relax, post_relax)`` triples.
-        min_distance_threshold: Minimum acceptable interatomic distance in
-            angstroms.  Must be non-negative.
+        min_distance_threshold: Hard floor for minimum interatomic distance
+            in angstroms.  Applied alongside the covalent-radii-based check.
+            Must be non-negative.
         symprec: Symmetry precision for SpacegroupAnalyzer (Å).  Applied
             identically to both pre- and post-relaxation analysis.
 
@@ -201,8 +245,8 @@ def validate_post_relaxation(
     reports: list[PostRelaxationReport] = []
 
     for struct_id, pre_relax, post_relax in structures:
-        min_dist = _get_min_distance(post_relax)
-        distance_valid = min_dist >= min_distance_threshold
+        cov_valid, min_dist = _check_distances_post_relax(post_relax)
+        distance_valid = cov_valid and min_dist >= min_distance_threshold
 
         pre_sg = _get_spacegroup_number(pre_relax, symprec)
         post_sg = _get_spacegroup_number(post_relax, symprec)
