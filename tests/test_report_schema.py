@@ -1,163 +1,156 @@
-"""Tests for discovery_workbench.report_schema."""
+"""Tests for the Q33 discovery report schema (DiscoveryReport, MoleculeAnnex, MaterialsAnnex)."""
 
 from __future__ import annotations
 
-import pytest
-
-from discovery_workbench.report_schema import (
-    BudgetSettings,
-    Report,
-    ShortlistEntry,
-)
+from amdw.reporting.schema import DiscoveryReport, MaterialsAnnex, MoleculeAnnex
+from amdw.shared.evidence import EvidenceLevel
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Factory helpers — synthetic instances with known values
 # ---------------------------------------------------------------------------
 
-def _budget() -> BudgetSettings:
-    return BudgetSettings(max_cycles=5, max_batches=8, shortlist_size=25)
-
-
-def _entry(**overrides: object) -> ShortlistEntry:
+def _make_discovery_report(**overrides: object) -> DiscoveryReport:
+    """Build a DiscoveryReport with deterministic defaults."""
     defaults: dict[str, object] = {
-        "candidate_id": "c1",
-        "scores": {"qed": 0.8},
-        "evidence_level": "heuristic_estimated",
-        "rank": 1,
+        "run_id": "run-001",
+        "timestamp": "2026-04-13T12:00:00Z",
+        "branch": "molecule",
+        "tool_versions": {"rdkit": "2024.03.5", "reinvent": "4.1.0"},
+        "user_brief": "Find QED > 0.7 molecules with logP < 3",
+        "parsed_constraints": {"qed": {"min": 0.7}, "logp": {"max": 3.0}},
+        "budget": {"max_cycles": 5, "max_batches": 10, "shortlist_size": 25},
+        "evidence_levels_used": [
+            EvidenceLevel.GENERATED,
+            EvidenceLevel.HEURISTIC_ESTIMATED,
+        ],
+        "shortlist_summary": [
+            {"candidate_id": "mol_a", "rank": 1, "qed": 0.85},
+        ],
     }
     defaults.update(overrides)
-    return ShortlistEntry(**defaults)  # type: ignore[arg-type]
+    return DiscoveryReport(**defaults)  # type: ignore[arg-type]
 
 
-def _report(**overrides: object) -> Report:
+def _make_molecule_annex(**overrides: object) -> MoleculeAnnex:
+    """Build a MoleculeAnnex with deterministic defaults."""
     defaults: dict[str, object] = {
-        "run_id": "r1",
-        "timestamp": "2026-01-01T00:00:00Z",
-        "branch": "small_molecule",
-        "tool_versions": {"rdkit": "2024.03"},
-        "user_brief": "test",
-        "parsed_constraints": {},
-        "budget": _budget(),
-        "stop_reason": None,
-        "evidence_legend": {},
-        "shortlist": [_entry()],
-        "warnings": [],
-        "annexes": {},
+        "generator": "reinvent-4.1.0",
+        "validity_counts": {"valid": 80, "invalid": 12, "total": 92},
+        "uniqueness_count": 64,
+        "novelty_counts": {"exact_known": 5, "close_analogue": 15, "novel_like": 44},
+        "constraint_satisfaction": {"qed_gt_0.7": 38, "logp_lt_3": 52},
+        "export_bundle_paths": {"sdf": "/out/mols.sdf", "csv": "/out/scores.csv"},
+        "warnings": ["3 molecules failed sanitisation"],
     }
     defaults.update(overrides)
-    return Report(**defaults)  # type: ignore[arg-type]
+    return MoleculeAnnex(**defaults)  # type: ignore[arg-type]
+
+
+def _make_materials_annex(**overrides: object) -> MaterialsAnnex:
+    """Build a MaterialsAnnex with deterministic defaults."""
+    defaults: dict[str, object] = {
+        "generator": "mattergen-0.2.0",
+        "scope_filters": {"max_atoms": 20, "excluded_elements": ["Tl", "Pb"]},
+        "relaxation_backend": "mattersim-0.3.1",
+        "validation_summary": {"valid": 45, "invalid": 5, "total": 50},
+        "dft_handoff_paths": {"cand_001": "/dft/cand_001", "cand_002": "/dft/cand_002"},
+        "warnings": ["2 candidates below hull distance threshold"],
+    }
+    defaults.update(overrides)
+    return MaterialsAnnex(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
-# BudgetSettings
+# Tests
 # ---------------------------------------------------------------------------
 
-def test_budget_settings_fields() -> None:
-    """BudgetSettings stores max_cycles, max_batches, and shortlist_size."""
-    b = BudgetSettings(max_cycles=10, max_batches=3, shortlist_size=50)
-    assert b.max_cycles == 10
-    assert b.max_batches == 3
-    assert b.shortlist_size == 50
+def test_shared_fields_populated() -> None:
+    """DiscoveryReport exposes all 9 shared top-level fields as non-None with correct values."""
+    report = _make_discovery_report()
+
+    assert report.run_id is not None
+    assert report.run_id == "run-001"
+
+    assert report.timestamp is not None
+    assert report.timestamp == "2026-04-13T12:00:00Z"
+
+    assert report.branch is not None
+    assert report.branch == "molecule"
+
+    assert report.tool_versions is not None
+    assert report.tool_versions == {"rdkit": "2024.03.5", "reinvent": "4.1.0"}
+
+    assert report.user_brief is not None
+    assert report.user_brief == "Find QED > 0.7 molecules with logP < 3"
+
+    assert report.parsed_constraints is not None
+    assert report.parsed_constraints["qed"] == {"min": 0.7}
+
+    assert report.budget is not None
+    assert report.budget["max_cycles"] == 5
+
+    assert report.evidence_levels_used is not None
+    assert report.evidence_levels_used == [
+        EvidenceLevel.GENERATED,
+        EvidenceLevel.HEURISTIC_ESTIMATED,
+    ]
+
+    assert report.shortlist_summary is not None
+    assert report.shortlist_summary[0]["candidate_id"] == "mol_a"
 
 
-# ---------------------------------------------------------------------------
-# ShortlistEntry
-# ---------------------------------------------------------------------------
+def test_molecule_annex_completeness() -> None:
+    """MoleculeAnnex exposes all 7 fields with correct types and values."""
+    annex = _make_molecule_annex()
 
-def test_shortlist_entry_stores_evidence_level() -> None:
-    """ShortlistEntry preserves the evidence_level string."""
-    entry = _entry(evidence_level="ml_predicted")
-    assert entry.evidence_level == "ml_predicted"
+    assert annex.generator is not None
+    assert annex.generator == "reinvent-4.1.0"
 
+    assert annex.validity_counts is not None
+    assert annex.validity_counts["valid"] == 80
+    assert annex.validity_counts["invalid"] == 12
+    assert annex.validity_counts["total"] == 92
 
-def test_shortlist_rejects_empty_candidate_id() -> None:
-    """Empty candidate_id is rejected at construction time."""
-    with pytest.raises(ValueError, match="candidate_id") as exc_info:
-        _entry(candidate_id="")
-    assert "non-empty" in str(exc_info.value)
+    assert annex.uniqueness_count is not None
+    assert annex.uniqueness_count == 64
 
+    assert annex.novelty_counts is not None
+    assert annex.novelty_counts["exact_known"] == 5
+    assert annex.novelty_counts["close_analogue"] == 15
+    assert annex.novelty_counts["novel_like"] == 44
 
-def test_shortlist_rejects_zero_rank() -> None:
-    """rank must be >= 1."""
-    with pytest.raises(ValueError, match="rank") as exc_info:
-        _entry(rank=0)
-    assert "0" in str(exc_info.value)
+    assert annex.constraint_satisfaction is not None
+    assert annex.constraint_satisfaction["qed_gt_0.7"] == 38
 
+    assert annex.export_bundle_paths is not None
+    assert annex.export_bundle_paths["sdf"] == "/out/mols.sdf"
 
-def test_shortlist_rejects_negative_rank() -> None:
-    """Negative rank is rejected."""
-    with pytest.raises(ValueError, match="rank") as exc_info:
-        _entry(rank=-3)
-    assert "-3" in str(exc_info.value)
-
-
-def test_shortlist_rejects_invalid_evidence_level() -> None:
-    """An evidence_level not in EvidenceLevel labels is rejected."""
-    with pytest.raises(ValueError, match="evidence_level") as exc_info:
-        _entry(evidence_level="made_up")
-    assert "'made_up'" in str(exc_info.value)
+    assert annex.warnings is not None
+    assert annex.warnings == ["3 molecules failed sanitisation"]
 
 
-# ---------------------------------------------------------------------------
-# Report — valid construction
-# ---------------------------------------------------------------------------
+def test_materials_annex_completeness() -> None:
+    """MaterialsAnnex exposes all 6 fields with correct types and values."""
+    annex = _make_materials_annex()
 
-def test_report_valid_construction() -> None:
-    """A Report with all valid fields constructs without error."""
-    r = _report()
-    assert r.run_id == "r1"
-    assert r.branch == "small_molecule"
-    assert len(r.shortlist) == 1
-    assert r.shortlist[0].candidate_id == "c1"
+    assert annex.generator is not None
+    assert annex.generator == "mattergen-0.2.0"
 
+    assert annex.scope_filters is not None
+    assert annex.scope_filters["max_atoms"] == 20
+    assert annex.scope_filters["excluded_elements"] == ["Tl", "Pb"]
 
-def test_report_allows_empty_shortlist() -> None:
-    """An empty shortlist is valid — the run may have found nothing."""
-    r = _report(shortlist=[])
-    assert r.shortlist == []
+    assert annex.relaxation_backend is not None
+    assert annex.relaxation_backend == "mattersim-0.3.1"
 
+    assert annex.validation_summary is not None
+    assert annex.validation_summary["valid"] == 45
+    assert annex.validation_summary["total"] == 50
 
-def test_report_allows_none_stop_reason() -> None:
-    """stop_reason=None is valid — the run may still be in progress."""
-    r = _report(stop_reason=None)
-    assert r.stop_reason is None
-    assert r.run_id == "r1"
+    assert annex.dft_handoff_paths is not None
+    assert annex.dft_handoff_paths["cand_001"] == "/dft/cand_001"
+    assert annex.dft_handoff_paths["cand_002"] == "/dft/cand_002"
 
-
-def test_report_inorganic_branch() -> None:
-    """The inorganic_materials branch is accepted."""
-    r = _report(branch="inorganic_materials")
-    assert r.branch == "inorganic_materials"
-
-
-# ---------------------------------------------------------------------------
-# Report — rejection
-# ---------------------------------------------------------------------------
-
-def test_report_rejects_empty_run_id() -> None:
-    """Empty run_id is rejected at construction time."""
-    with pytest.raises(ValueError, match="run_id") as exc_info:
-        _report(run_id="")
-    assert "non-empty" in str(exc_info.value)
-
-
-def test_report_rejects_unknown_branch() -> None:
-    """A branch not in VALID_BRANCHES is rejected."""
-    with pytest.raises(ValueError, match="branch") as exc_info:
-        _report(branch="protein_folding")
-    assert "'protein_folding'" in str(exc_info.value)
-
-
-def test_report_rejects_unparseable_timestamp() -> None:
-    """A non-ISO-8601 timestamp string is rejected."""
-    with pytest.raises(ValueError, match="timestamp") as exc_info:
-        _report(timestamp="not-a-date")
-    assert "'not-a-date'" in str(exc_info.value)
-
-
-def test_report_rejects_numeric_timestamp() -> None:
-    """A numeric timestamp (wrong type) is rejected."""
-    with pytest.raises(ValueError, match="timestamp") as exc_info:
-        _report(timestamp=12345)  # type: ignore[arg-type]
-    assert "12345" in str(exc_info.value)
+    assert annex.warnings is not None
+    assert annex.warnings == ["2 candidates below hull distance threshold"]
