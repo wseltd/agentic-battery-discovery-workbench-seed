@@ -20,6 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 mattergen = ["mattergen"]
 mattersim = ["mattersim"]
+mp = ["mp-api>=0.41"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",
