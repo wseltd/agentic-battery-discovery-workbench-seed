@@ -17,15 +17,17 @@ def _candidate(
     is_valid: bool = False,
     is_duplicate: bool = False,
     is_novel: bool = False,
-    is_stable: bool = False,
-    satisfies_target: bool = False,
+    meets_stability_threshold: bool = False,
+    meets_target: bool = False,
+    charge_balance_ok: bool = False,
 ) -> dict[str, object]:
     return {
         "is_valid": is_valid,
         "is_duplicate": is_duplicate,
         "is_novel": is_novel,
-        "is_stable": is_stable,
-        "satisfies_target": satisfies_target,
+        "meets_stability_threshold": meets_stability_threshold,
+        "meets_target": meets_target,
+        "charge_balance_ok": charge_balance_ok,
     }
 
 
@@ -51,8 +53,9 @@ def test_single_candidate_all_true() -> None:
         is_valid=True,
         is_duplicate=False,
         is_novel=True,
-        is_stable=True,
-        satisfies_target=True,
+        meets_stability_threshold=True,
+        meets_target=True,
+        charge_balance_ok=True,
     )
     result = compute_materials_benchmark([c])
 
@@ -69,8 +72,9 @@ def test_single_candidate_all_false() -> None:
         is_valid=False,
         is_duplicate=True,
         is_novel=False,
-        is_stable=False,
-        satisfies_target=False,
+        meets_stability_threshold=False,
+        meets_target=False,
+        charge_balance_ok=False,
     )
     result = compute_materials_benchmark([c])
 
@@ -132,9 +136,9 @@ def test_uniqueness_pct_counts_not_duplicate() -> None:
 
 def test_stability_proxy_pct() -> None:
     candidates = [
-        _candidate(is_stable=True),
-        _candidate(is_stable=True),
-        _candidate(is_stable=False),
+        _candidate(meets_stability_threshold=True),
+        _candidate(meets_stability_threshold=True),
+        _candidate(meets_stability_threshold=False),
     ]
     result = compute_materials_benchmark(candidates)
 
@@ -143,8 +147,8 @@ def test_stability_proxy_pct() -> None:
 
 def test_target_satisfaction_pct() -> None:
     candidates = [
-        _candidate(satisfies_target=True),
-        _candidate(satisfies_target=False),
+        _candidate(meets_target=True),
+        _candidate(meets_target=False),
     ]
     result = compute_materials_benchmark(candidates)
 
@@ -152,18 +156,17 @@ def test_target_satisfaction_pct() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shortlist usefulness — requires ALL five flags passing
+# Shortlist usefulness — requires all four structural flags
 # ---------------------------------------------------------------------------
 
 def test_shortlist_usefulness_requires_all_passing() -> None:
-    """A candidate missing any single flag should not count toward shortlist."""
-    # All flags set except is_stable
+    """A candidate missing any single shortlist flag should not count."""
+    # Valid and unique and charge-balanced, but fails stability
     almost = _candidate(
         is_valid=True,
         is_duplicate=False,
-        is_novel=True,
-        is_stable=False,
-        satisfies_target=True,
+        meets_stability_threshold=False,
+        charge_balance_ok=True,
     )
     result = compute_materials_benchmark([almost])
 
@@ -174,17 +177,15 @@ def test_shortlist_usefulness_partial_pass() -> None:
     perfect = _candidate(
         is_valid=True,
         is_duplicate=False,
-        is_novel=True,
-        is_stable=True,
-        satisfies_target=True,
+        meets_stability_threshold=True,
+        charge_balance_ok=True,
     )
-    # Fails novelty
+    # Fails charge balance
     imperfect = _candidate(
         is_valid=True,
         is_duplicate=False,
-        is_novel=False,
-        is_stable=True,
-        satisfies_target=True,
+        meets_stability_threshold=True,
+        charge_balance_ok=False,
     )
     result = compute_materials_benchmark([perfect, imperfect])
 
@@ -197,7 +198,7 @@ def test_shortlist_usefulness_partial_pass() -> None:
 
 def test_dft_conversion_always_none() -> None:
     candidates = [
-        _candidate(is_valid=True, is_novel=True, is_stable=True),
+        _candidate(is_valid=True, is_novel=True, meets_stability_threshold=True),
         _candidate(is_valid=False),
     ]
     result = compute_materials_benchmark(candidates)
@@ -206,6 +207,26 @@ def test_dft_conversion_always_none() -> None:
     # Verify other metrics computed correctly alongside the None rate
     assert result.validity_pct == 0.5
     assert result.novelty_pct == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Missing flags treated as failing
+# ---------------------------------------------------------------------------
+
+def test_missing_flags_treated_as_failing() -> None:
+    """Candidate dicts missing expected keys should default to failing."""
+    # Empty dict — all flags absent
+    result = compute_materials_benchmark([{}])
+
+    assert result.validity_pct == 0.0
+    # is_duplicate defaults to False, so uniqueness counts it as unique
+    assert result.uniqueness_pct == 1.0
+    assert result.novelty_pct == 0.0
+    assert result.stability_proxy_pct == 0.0
+    assert result.target_satisfaction_pct == 0.0
+    # charge_balance_ok defaults to False, so shortlist fails
+    assert result.shortlist_usefulness == 0.0
+    assert result.dft_conversion_rate is None
 
 
 # ---------------------------------------------------------------------------

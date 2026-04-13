@@ -65,11 +65,13 @@ def compute_materials_benchmark(
     stages.  Missing flags are treated as ``False``.
 
     Expected keys per candidate dict:
-        ``is_valid``, ``is_duplicate``, ``is_novel``, ``is_stable``,
-        ``satisfies_target``.
+        ``is_valid``, ``is_duplicate``, ``is_novel``,
+        ``meets_stability_threshold``, ``meets_target``,
+        ``charge_balance_ok``.
 
-    Shortlist usefulness counts candidates that pass all five criteria
-    (valid, not duplicate, novel, stable, satisfies target).
+    Shortlist usefulness counts candidates that pass all four structural
+    criteria (valid, not duplicate, meets stability threshold, and
+    charge-balanced).
 
     Args:
         candidates: List of candidate dicts with boolean flag values.
@@ -105,8 +107,9 @@ def compute_materials_benchmark(
         is_valid = bool(c.get("is_valid", False))
         is_duplicate = bool(c.get("is_duplicate", False))
         is_novel = bool(c.get("is_novel", False))
-        is_stable = bool(c.get("is_stable", False))
-        satisfies_target = bool(c.get("satisfies_target", False))
+        meets_stability = bool(c.get("meets_stability_threshold", False))
+        meets_tgt = bool(c.get("meets_target", False))
+        charge_ok = bool(c.get("charge_balance_ok", False))
 
         if is_valid:
             valid_count += 1
@@ -114,11 +117,11 @@ def compute_materials_benchmark(
             unique_count += 1
         if is_novel:
             novel_count += 1
-        if is_stable:
+        if meets_stability:
             stable_count += 1
-        if satisfies_target:
+        if meets_tgt:
             target_count += 1
-        if is_valid and not is_duplicate and is_novel and is_stable and satisfies_target:
+        if is_valid and not is_duplicate and meets_stability and charge_ok:
             shortlist_count += 1
 
     return MaterialsBenchmarkReport(
