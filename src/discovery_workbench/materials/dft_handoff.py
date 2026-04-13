@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pymatgen.core import Structure
-from pymatgen.io.cif import CifWriter
 from pymatgen.io.vasp import Poscar
 
 logger = logging.getLogger(__name__)
@@ -166,8 +165,10 @@ def export_cif(structure: Structure, path: Path) -> Path:
     if len(structure) == 0:
         raise ValueError("Cannot export CIF for structure with no sites")
     logger.info("Exporting CIF to %s", path)
-    writer = CifWriter(structure)
-    writer.write_file(str(path))
+    # Use Structure.to(fmt='cif') rather than CifWriter directly — produces
+    # the same output but keeps the call site closer to the pymatgen public API.
+    cif_text = structure.to(fmt="cif")
+    path.write_text(cif_text)
     return path
 
 
