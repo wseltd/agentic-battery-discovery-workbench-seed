@@ -219,9 +219,10 @@ def generate_vasp_params(structure: Structure, path: Path) -> dict:
 def generate_atomate2_stub(structure: Structure, path: Path) -> dict:
     """Generate an atomate2 workflow stub and write it to a JSON file.
 
-    The stub defines a two-step workflow: RelaxMaker followed by
-    StaticMaker.  This is a serialised recipe, not executable code —
-    actual execution requires atomate2 and jobflow installed.
+    The stub defines a three-step workflow: RelaxMaker, StaticMaker,
+    then BandStructureMaker.  This is a serialised recipe, not
+    executable code — actual execution requires atomate2 and jobflow
+    installed.
 
     Args:
         structure: pymatgen Structure for the workflow.
@@ -244,6 +245,11 @@ def generate_atomate2_stub(structure: Structure, path: Path) -> dict:
                 "description": "Single-point energy on relaxed geometry",
                 "vasp_input_set": "MPStaticSet",
             },
+            {
+                "maker": "BandStructureMaker",
+                "description": "Band structure along high-symmetry path",
+                "vasp_input_set": "MPNonSCFSet",
+            },
         ],
         "composition": structure.composition.reduced_formula,
         "num_sites": len(structure),
@@ -251,6 +257,40 @@ def generate_atomate2_stub(structure: Structure, path: Path) -> dict:
     with open(path, "w") as fh:
         json.dump(stub, fh, indent=2)
     return stub
+
+
+def export_vasp_params(
+    vasp_parameters: dict, output_dir: Path, candidate_id: str
+) -> Path:
+    """Serialise VASP parameters to a JSON file.
+
+    Unlike generate_vasp_params which derives parameters from a
+    structure, this function takes an already-built parameter dict.
+    Use this when parameters have been customised after generation.
+
+    Args:
+        vasp_parameters: VASP INCAR parameters to export.
+        output_dir: Directory to write into (must exist).
+        candidate_id: Candidate identifier used in the filename.
+
+    Returns:
+        Path to the written JSON file.
+
+    Raises:
+        ValueError: If candidate_id is empty or output_dir does not exist.
+    """
+    if not candidate_id:
+        raise ValueError("candidate_id must be a non-empty string")
+    if not output_dir.is_dir():
+        raise ValueError(
+            f"output_dir does not exist or is not a directory: {output_dir}"
+        )
+
+    path = output_dir / f"{candidate_id}_vasp_params.json"
+    logger.info("Exporting VASP parameters to %s", path)
+    with open(path, "w") as fh:
+        json.dump(vasp_parameters, fh, indent=2)
+    return path
 
 
 # ---------------------------------------------------------------------------
