@@ -4,11 +4,16 @@ A dual-domain agentic discovery workbench for AI-guided generation, validation, 
 
 ## Installation
 
+Quick start:
 ```bash
-pip install -e '.[dev]'
+./scripts/setup.sh
 ```
 
-Requires Python 3.10 or later.
+This installs all dependencies, downloads model checkpoints, and builds the
+ChEMBL reference database. See **[INSTALL.md](INSTALL.md)** for manual setup,
+dependency architecture, and troubleshooting.
+
+Requires Python 3.10+, NVIDIA GPU with CUDA 12.x+, and conda for xTB.
 
 ## Overview
 
