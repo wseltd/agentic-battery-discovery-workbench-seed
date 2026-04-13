@@ -1,0 +1,168 @@
+"""Multi-objective Pareto ranker with NSGA-II-style front assignment.
+
+Assigns candidates to successive Pareto fronts, computes crowding
+distance within each front (weighted by objective weights), and
+produces a ranked shortlist with a full audit log.
+
+Higher scores are better (maximisation on all objectives).
+"""
+
+from __future__ import annotations
+
+import warnings
+from dataclasses import dataclass, field
+from typing import Any
+
+from agentic_discovery_core.crowding import compute_crowding_distance
+from agentic_discovery_core.pareto import non_dominated_sort
+from agentic_discovery_core.ranker_validation import validate_candidates
+
+
+# ---------------------------------------------------------------------------
+# Data models
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class RankAuditEntry:
+    """Audit record for a single ranked candidate.
+
+    Parameters
+    ----------
+    candidate_id:
+        Unique identifier of the candidate.
+    front_index:
+        Zero-based Pareto front the candidate was assigned to.
+    crowding_distance:
+        Crowding distance within its front (higher = more isolated).
+    final_rank:
+        One-based rank in the final shortlist (1 = best).
+    """
+
+    candidate_id: str
+    front_index: int
+    crowding_distance: float
+    final_rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class RankingResult:
+    """Result of Pareto ranking.
+
+    Parameters
+    ----------
+    shortlist:
+        Candidates in rank order, capped at the requested shortlist size.
+        Each entry is the original candidate dict.
+    audit_log:
+        One :class:`RankAuditEntry` per candidate in *shortlist* order.
+    """
+
+    shortlist: list[dict[str, Any]] = field(default_factory=list)
+    audit_log: list[RankAuditEntry] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Pareto helpers
+# ---------------------------------------------------------------------------
+
+
+def _crowding_distances(
+    front: list[dict[str, Any]],
+    weights: dict[str, float],
+) -> list[float]:
+    """Compute crowding distance for each candidate in a single front.
+
+    Delegates to :func:`agentic_discovery_core.crowding.compute_crowding_distance`
+    and converts the id-keyed dict back to a positional list aligned with *front*.
+    """
+    if not front:
+        return []
+    objective_names = list(weights.keys())
+    cd_map = compute_crowding_distance(front, objective_names, weights)
+    return [cd_map[cand["candidate_id"]] for cand in front]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def compute_pareto_ranking(
+    candidates: list[dict[str, Any]],
+    weights: dict[str, float],
+    shortlist_size: int,
+) -> RankingResult:
+    """Rank candidates using multi-objective Pareto sorting.
+
+    Parameters
+    ----------
+    candidates:
+        Each dict must have ``candidate_id`` (str) and ``scores``
+        (dict mapping objective name to float).
+    weights:
+        Positive weight per objective, used for crowding distance scaling.
+    shortlist_size:
+        Maximum number of candidates to include in the shortlist.
+
+    Returns
+    -------
+    RankingResult
+        Contains ``shortlist`` (list of candidate dicts, length at most
+        *shortlist_size*) and ``audit_log`` (one :class:`RankAuditEntry`
+        per shortlisted candidate).
+
+    Warns
+    -----
+    UserWarning
+        If any candidate has NaN scores -- those candidates are dropped.
+    """
+    if not weights:
+        raise ValueError("weights must not be empty -- at least one objective is required")
+    if shortlist_size < 1:
+        raise ValueError(
+            f"shortlist_size must be >= 1, got {shortlist_size}"
+        )
+
+    if not candidates:
+        return RankingResult()
+
+    objective_names = list(weights.keys())
+
+    # Delegate NaN / missing-key filtering to ranker_validation.
+    valid, validation_warnings = validate_candidates(candidates, objective_names)
+    for msg in validation_warnings:
+        warnings.warn(msg, UserWarning, stacklevel=2)
+
+    if not valid:
+        return RankingResult()
+
+    fronts = non_dominated_sort(valid, objective_names)
+
+    # Build (front_index, -crowding_distance, candidate) triples for
+    # sorting.  Lower front_index is better; higher crowding is better.
+    ranked: list[tuple[int, float, dict[str, Any]]] = []
+    for front_idx, front in enumerate(fronts):
+        cd = _crowding_distances(front, weights)
+        for i, cand in enumerate(front):
+            ranked.append((front_idx, -cd[i], cand))
+
+    # Sort: ascending front_index, then ascending negative crowding
+    # (= descending crowding distance).  Ties broken by candidate_id
+    # for determinism.
+    ranked.sort(key=lambda t: (t[0], t[1], t[2]["candidate_id"]))
+
+    capped = ranked[:shortlist_size]
+
+    shortlist: list[dict[str, Any]] = []
+    audit_log: list[RankAuditEntry] = []
+    for rank_pos, (front_idx, neg_cd, cand) in enumerate(capped, start=1):
+        shortlist.append(cand)
+        audit_log.append(
+            RankAuditEntry(
+                candidate_id=cand["candidate_id"],
+                front_index=front_idx,
+                crowding_distance=-neg_cd,
+                final_rank=rank_pos,
+            )
+        )
+
+    return RankingResult(shortlist=shortlist, audit_log=audit_log)

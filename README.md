@@ -1,56 +1,88 @@
-# Agentic Molecular and Materials Discovery Workbench
+# Agentic Battery Discovery Workbench — Seed Repository
 
-A dual-domain agentic discovery workbench for AI-guided generation, validation, and ranking of small-molecule drug candidates and inorganic crystalline materials.
+This repository is a **preservation clone** of the Agentic Molecular and
+Materials Discovery Workbench, restructured as a workspace from which
+clean open-source products can be extracted.
 
-## Installation
+## This Is Not the Battery Pivot
 
-Quick start:
-```bash
-./scripts/setup.sh
+The repository name is forward-looking — it is intended to become the
+base for a battery-focused discovery workbench at a later date. The
+code inside this repo is **not** battery-specific. See
+[`FUTURE_BATTERY_PIVOT_NOTE.md`](FUTURE_BATTERY_PIVOT_NOTE.md).
+
+## What This Repo Contains
+
+```
+.
+├── src/                                     # Full unmodified copy of the original repo
+├── packages/
+│   ├── agentic_discovery_core/              # Shared reusable infrastructure
+│   ├── agentic_molecule_discovery_workbench/  # Clean molecule-only product
+│   └── agentic_materials_discovery_workbench/ # Clean materials-only product
+├── docs/
+│   ├── archive/
+│   ├── split_plan/
+│   └── migration/
+├── ARCHIVE_CURRENT_PRODUCT_STATE.md         # Pre-split system description
+├── SPLIT_STRATEGY.md                        # Why and how the split was done
+├── EXTRACTED_PRODUCT_BOUNDARIES.md          # Which modules live where
+└── FUTURE_BATTERY_PIVOT_NOTE.md             # Deferred battery-pivot plan
 ```
 
-This installs all dependencies, downloads model checkpoints, and builds the
-ChEMBL reference database. See **[INSTALL.md](INSTALL.md)** for manual setup,
-dependency architecture, and troubleshooting.
+## The Three Packages
 
-Requires Python 3.10+, NVIDIA GPU with CUDA 12.x+, and conda for xTB.
+### `packages/agentic_discovery_core/`
+Domain-agnostic shared infrastructure: evidence levels, budget control,
+multi-objective ranking, routing, agent loop, reporting, validation
+models. No rdkit, no pymatgen — can be used by any scientific discovery
+domain.
 
-## Overview
+### `packages/agentic_molecule_discovery_workbench/`
+Small-molecule drug design workbench. Uses REINVENT 4 for generation,
+RDKit for validation, ChEMBL for novelty, xTB for QC handoff.
+Depends on `agentic-discovery-core`.
 
-This workbench provides two scientific branches under a shared infrastructure:
+### `packages/agentic_materials_discovery_workbench/`
+Inorganic crystalline materials discovery workbench. Uses MatterGen for
+generation, MatterSim for ML relaxation, pymatgen for validation,
+Materials Project and Alexandria for novelty, VASP/atomate2 for DFT
+handoff. Depends on `agentic-discovery-core`.
 
-- **Small-molecule design** — de novo generation, scaffold-constrained generation, and multi-objective property optimisation using REINVENT 4, scored and validated with RDKit.
-- **Inorganic materials design** — crystal structure generation conditioned on chemistry, symmetry, and target properties using MatterGen, relaxed with MatterSim, and validated with pymatgen.
+## Test Status
 
-Both branches share a request router, constraint parser, evidence-level tracking, duplicate/novelty policies, and a structured reporting pipeline.
+| Package | Tests |
+|---------|-------|
+| `agentic_discovery_core` | 365 passing |
+| `agentic_molecule_discovery_workbench` | 465 passing |
+| `agentic_materials_discovery_workbench` | 567 passing |
+| **Total in extracted products** | **1397 passing** |
 
-## Trade-Offs
+The original `src/` tree is preserved unmodified and its test suite
+(1432 tests) also still passes.
 
-- **ML relaxation over DFT for screening**: MatterSim is fast but less accurate than DFT. Structures are labelled `ml_relaxed` and DFT handoff is provided for final validation.
-- **REINVENT 4 as primary generator**: Chosen for maturity and documentation over GenMol's broader task coverage. GenMol is available as a v1-stretch plugin.
-- **Heuristic scoring over ML property predictors**: v1 uses RDKit descriptors and rule-based filters rather than ML toxicity/ADMET models to keep predictions auditable and avoid overconfident estimates.
-- **20-atom unit cell cap**: Limits materials diversity but keeps generation and relaxation tractable within compute budgets.
+## Key Documents
 
-## Limitations
+- [`ARCHIVE_CURRENT_PRODUCT_STATE.md`](ARCHIVE_CURRENT_PRODUCT_STATE.md) —
+  Snapshot of the unified system before the split.
+- [`SPLIT_STRATEGY.md`](SPLIT_STRATEGY.md) — Rationale and
+  preservation/extraction approach.
+- [`EXTRACTED_PRODUCT_BOUNDARIES.md`](EXTRACTED_PRODUCT_BOUNDARIES.md) —
+  Exact module-by-module mapping from `src/` to `packages/`.
+- [`FUTURE_BATTERY_PIVOT_NOTE.md`](FUTURE_BATTERY_PIVOT_NOTE.md) —
+  Deferred battery-pivot scope.
 
-- Generated candidates are not experimentally validated. All outputs are computational proposals.
-- Novelty is defined relative to specific reference databases (ChEMBL, Materials Project, Alexandria) and does not establish global novelty.
-- Property estimates are heuristic or ML-predicted and may be inaccurate. Evidence levels are tracked per value.
-- No support for polymers, biologics, MOFs/COFs, or process/synthesis planning in v1.
-- Convex hull stability is approximate — reference competing phases may be incomplete.
+## Relationship to the Original Repo
 
-## Non-Goals
+The original repo at
+`Agentic-Molecular-and-Materials-Discovery-Workbench` is untouched.
+It remains the master working copy and is tagged
+`pre_split_dual_domain_snapshot` at the preservation point.
 
-- Replacing experimental validation or DFT workflows. This workbench generates and ranks candidates; it does not claim to validate them.
-- Providing synthesis routes or retrosynthesis planning.
-- Supporting non-crystalline materials (polymers, glasses, amorphous solids).
-- Training or fine-tuning generative models. v1 uses pre-trained checkpoints only.
-- Real-time or interactive molecular dynamics.
-
-## Status
-
-Under active development. See `docs/research-pack.md` for the full architectural design.
+This seed repo was created via a full file-system copy followed by the
+addition of the `packages/` layout. The `src/` tree in this seed is
+byte-identical to the original at the preservation tag.
 
 ## License
 
-MIT — Copyright (c) 2026 WayneStark Enterprises Limited
+MIT — Copyright (c) 2026 Waynestark Enterprises Limited

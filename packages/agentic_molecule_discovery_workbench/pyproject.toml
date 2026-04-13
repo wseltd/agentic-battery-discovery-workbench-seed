@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-molecule-discovery-workbench"
+version = "0.1.0"
+description = "Agentic small-molecule discovery workbench — generate, validate, score, and rank drug-like candidates"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "rdkit",
+    "numpy",
+    "agentic-discovery-core",
+]
+
+[project.optional-dependencies]
+reinvent = [
+    "reinvent>=4.0",
+]
+xtb = [
+    "xtb-python",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_molecule_discovery"]
