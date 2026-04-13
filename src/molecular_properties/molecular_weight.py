@@ -38,4 +38,4 @@ def calc_molecular_weight(mol: Chem.Mol) -> float:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Descriptors.ExactMolWt(mol)
+    return float(Descriptors.ExactMolWt(mol))  # type: ignore[attr-defined]

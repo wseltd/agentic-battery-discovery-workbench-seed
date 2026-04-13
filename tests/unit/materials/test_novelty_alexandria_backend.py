@@ -101,8 +101,9 @@ class TestURLSchemeValidation:
 
     def test_empty_scheme_rejected(self) -> None:
         """URL without a scheme must be rejected."""
-        with pytest.raises(ValueError, match="not allowed"):
+        with pytest.raises(ValueError, match="not allowed") as exc_info:
             _validate_url_scheme("no-scheme.example.com/api")
+        assert "''" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -151,13 +152,15 @@ class TestConstructor:
 
     def test_http_url_rejected_at_construction(self) -> None:
         """Non-HTTPS URL must be rejected during __init__."""
-        with pytest.raises(ValueError, match="not allowed"):
+        with pytest.raises(ValueError, match="not allowed") as exc_info:
             AlexandriaReferenceBackend(api_url="http://insecure.com/api")
+        assert "'http'" in str(exc_info.value)
 
     def test_file_url_rejected_at_construction(self) -> None:
         """file:/ URL must be rejected during __init__ (B310)."""
-        with pytest.raises(ValueError, match="not allowed"):
+        with pytest.raises(ValueError, match="not allowed") as exc_info:
             AlexandriaReferenceBackend(api_url="file:///etc/passwd")
+        assert "'file'" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

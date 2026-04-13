@@ -8,12 +8,12 @@ from discovery_workbench.routing.keywords import (
     UNSUPPORTED_KEYWORDS,
     classify_token,
 )
-from discovery_workbench.routing.router import RoutingResult, route_deterministic
+from discovery_workbench.routing.router import DeterministicRoutingResult, route_deterministic
 
 __all__ = [
     "AMBIGUITY_KEYWORDS",
     "INORGANIC_MATERIALS_KEYWORDS",
-    "RoutingResult",
+    "DeterministicRoutingResult",
     "SMALL_MOLECULE_KEYWORDS",
     "STRUCTURED_CONSTRAINT_CUES",
     "UNSUPPORTED_KEYWORDS",

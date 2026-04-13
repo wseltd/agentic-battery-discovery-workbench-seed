@@ -77,8 +77,9 @@ class TestConstruction:
         assert cc.fractional_coords.shape == (8, 3)
 
     def test_direct_init_raises(self) -> None:
-        with pytest.raises(TypeError, match="cannot be constructed directly"):
+        with pytest.raises(TypeError, match="cannot be constructed directly") as exc_info:
             CrystalCanonical()
+        assert "cannot be constructed directly" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

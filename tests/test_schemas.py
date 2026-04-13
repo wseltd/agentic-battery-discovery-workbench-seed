@@ -138,11 +138,7 @@ def test_routing_result_frozen() -> None:
 
 
 def test_routing_result_unsupported_has_no_parsed_request() -> None:
-    """An 'unsupported' routing result should carry no parsed request.
-
-    This is a convention test — the dataclass does not enforce it, but
-    callers constructing unsupported results should follow this pattern.
-    """
+    """An 'unsupported' routing result should carry no parsed request."""
     result = RoutingResult(
         domain="unsupported", confidence=0.3,
         clarification_question="Could you clarify the target domain?",
@@ -151,3 +147,77 @@ def test_routing_result_unsupported_has_no_parsed_request() -> None:
     assert result.domain == "unsupported"
     assert result.parsed_request is None
     assert result.clarification_question is not None
+
+
+def test_routing_result_unsupported_rejects_parsed_request() -> None:
+    """Unsupported domain with a parsed request is internally inconsistent."""
+    mol = MoleculeRequest(
+        task_type="de_novo", objective="test", constraints={}, output_count=5,
+    )
+    with pytest.raises(ValueError, match="parsed_request must be None"):
+        RoutingResult(
+            domain="unsupported", confidence=0.3,
+            clarification_question=None, parsed_request=mol,
+        )
+
+
+def test_routing_result_domain_request_type_mismatch() -> None:
+    """Routable domain must carry the matching request type."""
+    mat = MaterialsRequest(chemistry_scope="Li-Fe-O", output_count=5)
+    mol = MoleculeRequest(
+        task_type="de_novo", objective="test", constraints={}, output_count=5,
+    )
+
+    # MaterialsRequest with small_molecule_design domain
+    with pytest.raises(TypeError, match="must be a MoleculeRequest"):
+        RoutingResult(
+            domain="small_molecule_design", confidence=0.75,
+            clarification_question=None, parsed_request=mat,
+        )
+
+    # MoleculeRequest with inorganic_materials_design domain
+    with pytest.raises(TypeError, match="must be a MaterialsRequest"):
+        RoutingResult(
+            domain="inorganic_materials_design", confidence=0.75,
+            clarification_question=None, parsed_request=mol,
+        )
+
+    # None parsed_request with a routable domain
+    with pytest.raises(TypeError, match="must be a MoleculeRequest"):
+        RoutingResult(
+            domain="small_molecule_design", confidence=0.75,
+            clarification_question=None, parsed_request=None,
+        )
+
+
+def test_routing_result_clarification_rejected_at_high_confidence() -> None:
+    """Clarification question with high confidence and a parsed request is a bug."""
+    mol = MoleculeRequest(
+        task_type="de_novo", objective="test", constraints={}, output_count=5,
+    )
+    with pytest.raises(ValueError, match="clarification_question must be None"):
+        RoutingResult(
+            domain="small_molecule_design", confidence=0.95,
+            clarification_question="Are you sure?", parsed_request=mol,
+        )
+
+
+def test_routing_result_clarification_allowed_at_low_confidence() -> None:
+    """Clarification question is valid when confidence is below the ceiling."""
+    mol = MoleculeRequest(
+        task_type="de_novo", objective="test", constraints={}, output_count=5,
+    )
+    result = RoutingResult(
+        domain="small_molecule_design", confidence=0.6,
+        clarification_question="Did you mean de novo?", parsed_request=mol,
+    )
+    assert result.clarification_question == "Did you mean de novo?"
+
+
+def test_routing_result_clarification_allowed_when_no_parsed_request() -> None:
+    """Clarification question is valid when parsed_request is None."""
+    result = RoutingResult(
+        domain="unsupported", confidence=0.3,
+        clarification_question="Could you clarify?", parsed_request=None,
+    )
+    assert result.clarification_question == "Could you clarify?"

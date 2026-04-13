@@ -9,20 +9,20 @@ from __future__ import annotations
 
 import pytest
 
-from discovery_workbench.routing.router import RoutingResult, route_deterministic
+from discovery_workbench.routing.router import DeterministicRoutingResult, route_deterministic
 
 
 # ---------------------------------------------------------------------------
-# RoutingResult dataclass tests
+# DeterministicRoutingResult dataclass tests
 # ---------------------------------------------------------------------------
 
 
-class TestRoutingResultDataclass:
-    """Verify RoutingResult structural invariants."""
+class TestDeterministicRoutingResultDataclass:
+    """Verify DeterministicRoutingResult structural invariants."""
 
     def test_routing_result_is_frozen(self) -> None:
         """Mutation of any field must raise FrozenInstanceError."""
-        result = RoutingResult(
+        result = DeterministicRoutingResult(
             domain="small_molecule",
             matched_keywords=frozenset({"clogp"}),
             ambiguity_hits=frozenset(),
@@ -41,7 +41,7 @@ class TestRoutingResultDataclass:
 
     def test_routing_result_default_construction(self) -> None:
         """Verify all four fields are present with expected types."""
-        result = RoutingResult(
+        result = DeterministicRoutingResult(
             domain=None,
             matched_keywords=frozenset(),
             ambiguity_hits=frozenset(),
@@ -55,7 +55,7 @@ class TestRoutingResultDataclass:
     def test_routing_result_rejects_wrong_stage(self) -> None:
         """stage must be 'deterministic' — anything else is a bug."""
         with pytest.raises(ValueError, match="stage must be 'deterministic'") as exc_info:
-            RoutingResult(
+            DeterministicRoutingResult(
                 domain=None,
                 matched_keywords=frozenset(),
                 ambiguity_hits=frozenset(),

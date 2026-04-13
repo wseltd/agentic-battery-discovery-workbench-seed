@@ -1,7 +1,7 @@
 """Structured report schema for the agentic discovery workbench.
 
 Dataclass definitions for DiscoveryReport (shared top-level fields),
-MoleculeAnnex (small-molecule branch annex), and MaterialsAnnex
+MoleculeAnnex (small-molecule branch annex), and ReportMaterialsAnnex
 (inorganic-materials branch annex).  These are pure data containers
 with no serialisation or file I/O — downstream renderers consume them.
 """
@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from amdw.shared.evidence import EvidenceLevel
 
-__all__ = ["DiscoveryReport", "MoleculeAnnex", "MaterialsAnnex"]
+__all__ = ["DiscoveryReport", "MoleculeAnnex", "ReportMaterialsAnnex"]
 
 # Allowed branch identifiers.
 VALID_BRANCHES = frozenset({"molecule", "material"})
@@ -42,7 +42,7 @@ class MoleculeAnnex:
 
 
 @dataclass(slots=True)
-class MaterialsAnnex:
+class ReportMaterialsAnnex:
     """Annex section for an inorganic-materials discovery report.
 
     Args:

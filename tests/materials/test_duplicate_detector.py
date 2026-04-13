@@ -1,4 +1,4 @@
-"""Tests for MaterialsDuplicateDetector and DuplicateResult data structures."""
+"""Tests for MaterialsDuplicateDetector and MaterialsDuplicateResult data structures."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from agentic_discovery_workbench.materials.duplicate_detector import (
     DEFAULT_ANGLE_TOL,
     DEFAULT_LTOL,
     DEFAULT_STOL,
-    DuplicateResult,
+    MaterialsDuplicateResult,
     MaterialsDuplicateDetector,
     PassType,
 )
@@ -80,17 +80,17 @@ def _fe_bcc() -> Structure:
 
 
 # ---------------------------------------------------------------------------
-# DuplicateResult data structure
+# MaterialsDuplicateResult data structure
 # ---------------------------------------------------------------------------
 
 
-class TestDuplicateResultFields:
-    """Verify DuplicateResult dataclass shape and field access."""
+class TestMaterialsDuplicateResultFields:
+    """Verify MaterialsDuplicateResult dataclass shape and field access."""
 
     def test_duplicate_result_fields(self) -> None:
         """All declared fields are accessible and hold assigned values."""
         tolerances = {"ltol": 0.2, "stol": 0.3, "angle_tol": 5.0}
-        result = DuplicateResult(
+        result = MaterialsDuplicateResult(
             query_id="struct_001",
             duplicate_of="struct_000",
             pass_type=PassType.POST_RELAX,
@@ -105,7 +105,7 @@ class TestDuplicateResultFields:
         assert result.is_duplicate is True
 
         # Non-duplicate variant
-        result_unique = DuplicateResult(
+        result_unique = MaterialsDuplicateResult(
             query_id="struct_002",
             duplicate_of=None,
             pass_type=PassType.PRE_RELAX,

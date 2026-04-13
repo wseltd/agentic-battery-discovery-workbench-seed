@@ -34,18 +34,21 @@ class TestValidationErrorFrozen:
 
     def test_cannot_set_error_type(self):
         err = ValidationError(error_type="valence", message="m", smiles="C")
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             err.error_type = "syntax"
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
 
     def test_cannot_set_message(self):
         err = ValidationError(error_type="valence", message="m", smiles="C")
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             err.message = "new"
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
 
     def test_cannot_set_smiles(self):
         err = ValidationError(error_type="valence", message="m", smiles="C")
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             err.smiles = "O"
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
 
 
 class TestValidationErrorEquality:
@@ -113,19 +116,22 @@ class TestValidationResultFrozen:
 
     def test_cannot_set_is_valid(self):
         result = ValidationResult(is_valid=True, mol=None, errors=[])
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             result.is_valid = False
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
 
     def test_cannot_set_mol(self):
         result = ValidationResult(is_valid=True, mol=None, errors=[])
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             result.mol = Chem.MolFromSmiles("C")
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
         assert result.mol is None
 
     def test_cannot_set_errors(self):
         result = ValidationResult(is_valid=True, mol=None, errors=[])
-        with pytest.raises(dataclasses.FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError) as exc_info:
             result.errors = [ValidationError("x", "y", "z")]
+        assert isinstance(exc_info.value, dataclasses.FrozenInstanceError)
 
 
 class TestValidationResultEdgeCases:

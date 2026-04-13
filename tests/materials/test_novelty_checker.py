@@ -12,8 +12,8 @@ from agentic_discovery_workbench.materials.novelty_checker import (
     DEFAULT_LTOL,
     DEFAULT_STOL,
     MaterialsNoveltyChecker,
-    NoveltyClassification,
-    NoveltyResult,
+    MaterialsNoveltyClassification,
+    MaterialsNoveltyResult,
     RATE_LIMIT_DELAY_SECONDS,
     ReferenceDBClient,
     check_novelty,
@@ -87,7 +87,7 @@ class TestClassification:
 
         result = checker.check("gen_001", nacl)
 
-        assert result.classification == NoveltyClassification.KNOWN
+        assert result.classification == MaterialsNoveltyClassification.KNOWN
         assert result.classification == "known"  # StrEnum string equality
         assert result.matched_reference_id == "mp-22862"
         assert result.reference_db == "MP"
@@ -101,7 +101,7 @@ class TestClassification:
 
         result = checker.check("gen_002", nacl)
 
-        assert result.classification == NoveltyClassification.NOVEL
+        assert result.classification == MaterialsNoveltyClassification.NOVEL
         assert result.classification == "novel"
         assert result.matched_reference_id is None
 
@@ -123,7 +123,7 @@ class TestClassification:
 
         result = checker.check("gen_003", nacl)
 
-        assert result.classification == NoveltyClassification.KNOWN
+        assert result.classification == MaterialsNoveltyClassification.KNOWN
         assert result.reference_db == "Alexandria"
         assert result.matched_reference_id == "alex-12345"
 
@@ -230,7 +230,7 @@ class TestAPIFailures:
 
         assert result.reference_incomplete is True
         # Classification should still be produced (novel, since no data)
-        assert result.classification == NoveltyClassification.NOVEL
+        assert result.classification == MaterialsNoveltyClassification.NOVEL
 
 
 # ---------------------------------------------------------------------------
@@ -272,14 +272,14 @@ class TestCompositionFiltering:
 
 
 class TestResultFields:
-    """Verify NoveltyResult structure and field completeness."""
+    """Verify MaterialsNoveltyResult structure and field completeness."""
 
     def test_novelty_result_fields_complete(self) -> None:
         """All declared fields must be present and hold correct types."""
         tolerances = {"ltol": 0.2, "stol": 0.3, "angle_tol": 5}
-        result = NoveltyResult(
+        result = MaterialsNoveltyResult(
             structure_id="test_struct",
-            classification=NoveltyClassification.NOVEL,
+            classification=MaterialsNoveltyClassification.NOVEL,
             matched_reference_id=None,
             reference_db="MP",
             reference_db_version="v2022.10.28",
@@ -298,9 +298,9 @@ class TestResultFields:
         assert result.reference_incomplete is False
 
         # Known variant — all fields populated
-        result_known = NoveltyResult(
+        result_known = MaterialsNoveltyResult(
             structure_id="test_known",
-            classification=NoveltyClassification.KNOWN,
+            classification=MaterialsNoveltyClassification.KNOWN,
             matched_reference_id="mp-22862",
             reference_db="MP",
             reference_db_version="v2022.10.28",
@@ -380,12 +380,12 @@ class TestCheckNoveltyFunction:
     """Verify the module-level check_novelty convenience function."""
 
     def test_check_novelty_returns_novel_for_unmatched(self) -> None:
-        """check_novelty should produce a NoveltyResult via the checker."""
+        """check_novelty should produce a MaterialsNoveltyResult via the checker."""
         nacl = _nacl_rocksalt()
         client = _mock_client(candidates=[])
 
         result = check_novelty("gen_fn", nacl, [client])
 
-        assert result.classification == NoveltyClassification.NOVEL
+        assert result.classification == MaterialsNoveltyClassification.NOVEL
         assert result.structure_id == "gen_fn"
         assert result.match_stage == "post_relax"

@@ -38,7 +38,7 @@ FORBIDDEN_ATOMIC_NUMBERS: frozenset[int] = frozenset(
 
 
 @dataclass(frozen=True)
-class ValidationResult:
+class MaterialsValidationResult:
     """Outcome of a single validation stage.
 
     Args:
@@ -61,36 +61,7 @@ class ValidationResult:
             )
 
 
-def validate_structure_parseable(structure_dict: dict) -> ValidationResult:
-    """Check whether *structure_dict* can be round-tripped into a pymatgen Structure.
-
-    Accepts a dict in pymatgen's ``as_dict()`` format and attempts to
-    reconstruct a :class:`~pymatgen.core.Structure` from it.  Any failure
-    (missing keys, wrong types, malformed lattice) is reported as a hard
-    parse error.
-
-    Args:
-        structure_dict: A dictionary representation of a pymatgen Structure.
-
-    Returns:
-        A :class:`ValidationResult` with ``stage='parse'``.
-    """
-    try:
-        Structure.from_dict(structure_dict)
-    except (TypeError, ValueError, KeyError, AttributeError) as exc:
-        logger.debug("Structure parse failed: %s", exc)
-        return ValidationResult(
-            passed=False,
-            stage="parse",
-            message=f"Cannot parse structure dict: {exc}",
-            severity="hard",
-        )
-    return ValidationResult(
-        passed=True, stage="parse", message="", severity="hard"
-    )
-
-
-def validate_lattice_sanity(structure: Structure) -> ValidationResult:
+def validate_lattice_sanity(structure: Structure) -> MaterialsValidationResult:
     """Check that the lattice of *structure* is numerically well-formed.
 
     Catches degenerate lattices that pymatgen can technically represent but
@@ -101,12 +72,12 @@ def validate_lattice_sanity(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='lattice_sanity'``.
+        A :class:`MaterialsValidationResult` with ``stage='lattice_sanity'``.
     """
     matrix = np.array(structure.lattice.matrix)
 
     if not np.all(np.isfinite(matrix)):
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="lattice_sanity",
             message="Lattice matrix contains NaN or Inf",
@@ -116,7 +87,7 @@ def validate_lattice_sanity(structure: Structure) -> ValidationResult:
     det = float(np.linalg.det(matrix))
 
     if det <= 0:
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="lattice_sanity",
             message=f"Lattice determinant is non-positive ({det:.6g})",
@@ -125,19 +96,19 @@ def validate_lattice_sanity(structure: Structure) -> ValidationResult:
 
     volume = abs(det)
     if volume < _MIN_LATTICE_VOLUME:
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="lattice_sanity",
             message=f"Lattice volume {volume:.6g} Å³ is below minimum {_MIN_LATTICE_VOLUME}",
             severity="hard",
         )
 
-    return ValidationResult(
+    return MaterialsValidationResult(
         passed=True, stage="lattice_sanity", message="", severity="hard"
     )
 
 
-def validate_allowed_elements(structure: Structure) -> ValidationResult:
+def validate_allowed_elements(structure: Structure) -> MaterialsValidationResult:
     """Reject structures containing forbidden elements.
 
     Checks every site in *structure* against :data:`FORBIDDEN_ATOMIC_NUMBERS`.
@@ -148,7 +119,7 @@ def validate_allowed_elements(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='allowed_elements'``.
+        A :class:`MaterialsValidationResult` with ``stage='allowed_elements'``.
     """
     offending: set[str] = set()
     for site in structure:
@@ -158,19 +129,19 @@ def validate_allowed_elements(structure: Structure) -> ValidationResult:
 
     if offending:
         names = ", ".join(sorted(offending))
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="allowed_elements",
             message=f"Forbidden element(s): {names}",
             severity="hard",
         )
 
-    return ValidationResult(
+    return MaterialsValidationResult(
         passed=True, stage="allowed_elements", message="", severity="hard"
     )
 
 
-def validate_atom_count(structure: Structure) -> ValidationResult:
+def validate_atom_count(structure: Structure) -> MaterialsValidationResult:
     """Reject structures with zero atoms or more than the allowed maximum.
 
     Structures must contain between 1 and :data:`_MAX_ATOM_COUNT` atoms
@@ -181,12 +152,12 @@ def validate_atom_count(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='atom_count'``.
+        A :class:`MaterialsValidationResult` with ``stage='atom_count'``.
     """
     n = len(structure)
 
     if n == 0:
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="atom_count",
             message="Structure has 0 atoms",
@@ -194,19 +165,19 @@ def validate_atom_count(structure: Structure) -> ValidationResult:
         )
 
     if n > _MAX_ATOM_COUNT:
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="atom_count",
             message=f"Structure has {n} atoms, exceeds maximum of {_MAX_ATOM_COUNT}",
             severity="hard",
         )
 
-    return ValidationResult(
+    return MaterialsValidationResult(
         passed=True, stage="atom_count", message="", severity="hard"
     )
 
 
-def validate_interatomic_distances(structure: Structure) -> ValidationResult:
+def validate_interatomic_distances(structure: Structure) -> MaterialsValidationResult:
     """Hard-reject structures where any atom pair is unphysically close.
 
     Uses pymatgen's periodic-aware :attr:`Structure.distance_matrix` (which
@@ -218,12 +189,12 @@ def validate_interatomic_distances(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='interatomic_distances'``
+        A :class:`MaterialsValidationResult` with ``stage='interatomic_distances'``
         and ``severity='hard'``.
     """
     n = len(structure)
     if n < 2:
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=True,
             stage="interatomic_distances",
             message="",
@@ -234,7 +205,7 @@ def validate_interatomic_distances(structure: Structure) -> ValidationResult:
     dist_matrix = structure.distance_matrix
 
     cov_radii = [
-        float(Element(site.specie.symbol).atomic_radius)
+        float(Element(site.specie.symbol).atomic_radius or 0.0)
         for site in structure
     ]
 
@@ -252,14 +223,14 @@ def validate_interatomic_distances(structure: Structure) -> ValidationResult:
 
     if violations:
         detail = "; ".join(violations)
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="interatomic_distances",
             message=f"Atoms too close: {detail}",
             severity="hard",
         )
 
-    return ValidationResult(
+    return MaterialsValidationResult(
         passed=True,
         stage="interatomic_distances",
         message="",
@@ -267,7 +238,7 @@ def validate_interatomic_distances(structure: Structure) -> ValidationResult:
     )
 
 
-def validate_coordination_sanity(structure: Structure) -> ValidationResult:
+def validate_coordination_sanity(structure: Structure) -> MaterialsValidationResult:
     """Soft-flag structures with implausible coordination numbers.
 
     Uses pymatgen :class:`~pymatgen.analysis.local_env.CrystalNN` to compute
@@ -280,7 +251,7 @@ def validate_coordination_sanity(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='coordination_sanity'``
+        A :class:`MaterialsValidationResult` with ``stage='coordination_sanity'``
         and ``severity='soft'``.
     """
     # Import here — CrystalNN is expensive to import and only needed for this
@@ -309,14 +280,14 @@ def validate_coordination_sanity(structure: Structure) -> ValidationResult:
 
     if anomalies:
         detail = "; ".join(anomalies)
-        return ValidationResult(
+        return MaterialsValidationResult(
             passed=False,
             stage="coordination_sanity",
             message=f"Unusual coordination: {detail}",
             severity="soft",
         )
 
-    return ValidationResult(
+    return MaterialsValidationResult(
         passed=True,
         stage="coordination_sanity",
         message="",

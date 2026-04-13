@@ -202,7 +202,7 @@ class TestConformerFallback:
         self, builder: XtbHandoffBuilder, ethanol_mol: Chem.Mol
     ) -> None:
         call_count = 0
-        original_embed = AllChem.EmbedMolecule
+        original_embed = AllChem.EmbedMolecule  # type: ignore[attr-defined]
 
         def mock_embed(mol, *args, **kwargs):
             nonlocal call_count
@@ -237,7 +237,7 @@ class TestConformerFallback:
         self, builder: XtbHandoffBuilder, ethanol_mol: Chem.Mol
     ) -> None:
         call_count = 0
-        original_embed = AllChem.EmbedMolecule
+        original_embed = AllChem.EmbedMolecule  # type: ignore[attr-defined]
 
         def mock_embed(mol, *args, **kwargs):
             nonlocal call_count

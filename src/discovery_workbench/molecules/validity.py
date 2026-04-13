@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
-class ValidationResult:
+class MolecularValidationResult:
     """Outcome of the full molecular validation pipeline.
 
     Attributes:
@@ -41,7 +41,7 @@ def validate_molecule(
     smiles: str,
     min_formal_charge: int = -1,
     max_formal_charge: int = 1,
-) -> ValidationResult:
+) -> MolecularValidationResult:
     """Validate a SMILES string through the ordered rejection chain.
 
     Stages run in order; the first hard-rejection stage terminates early.
@@ -60,27 +60,27 @@ def validate_molecule(
         max_formal_charge: Maximum allowed formal charge per atom (inclusive).
 
     Returns:
-        ValidationResult with is_valid flag, optional rejection_stage,
+        MolecularValidationResult with is_valid flag, optional rejection_stage,
         and informational warnings list.
 
     Raises:
         ValueError: If min_formal_charge > max_formal_charge.
     """
     if not isinstance(smiles, str) or not smiles:
-        return ValidationResult(is_valid=False, rejection_stage="syntax")
+        return MolecularValidationResult(is_valid=False, rejection_stage="syntax")
 
     # Stage 1: syntax — can RDKit parse this at all?
     mol = Chem.MolFromSmiles(smiles, sanitize=False)
     if mol is None:
         logger.info("Syntax rejection for SMILES: %s", smiles)
-        return ValidationResult(is_valid=False, rejection_stage="syntax")
+        return MolecularValidationResult(is_valid=False, rejection_stage="syntax")
 
     # Stage 2: valence — does the molecule have chemically valid valences?
     try:
         Chem.SanitizeMol(mol)
     except ValueError as exc:
         logger.info("Valence rejection for SMILES %s: %s", smiles, exc)
-        return ValidationResult(is_valid=False, rejection_stage="valence")
+        return MolecularValidationResult(is_valid=False, rejection_stage="valence")
 
     # Stage 3: charge — are all formal charges within allowed range?
     charge_result = check_formal_charge(
@@ -88,7 +88,7 @@ def validate_molecule(
     )
     if not charge_result.is_valid:
         logger.info("Charge rejection for SMILES: %s", smiles)
-        return ValidationResult(is_valid=False, rejection_stage="charge")
+        return MolecularValidationResult(is_valid=False, rejection_stage="charge")
 
     # Informational stages — collect warnings, never reject
     warnings: list[str] = []
@@ -107,4 +107,4 @@ def validate_molecule(
             f"salt stripped: {salt_result.fragments_removed} fragment(s) removed"
         )
 
-    return ValidationResult(is_valid=True, warnings=warnings)
+    return MolecularValidationResult(is_valid=True, warnings=warnings)

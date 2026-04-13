@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from rdkit import Chem
-from rdkit.Chem import Descriptors, GetMolFrags
+from rdkit.Chem import GetMolFrags
+from rdkit.Chem.rdMolDescriptors import CalcExactMolWt
 
 # Atomic number of carbon — used to detect organic fragments
 _CARBON_ATOMIC_NUM = 6
@@ -85,7 +86,7 @@ def strip_salts(mol: Chem.Mol) -> SaltStripResult:
     # Sort by heavy atom count descending, then molecular weight descending
     # to break ties deterministically.
     organic.sort(
-        key=lambda m: (_heavy_atom_count(m), Descriptors.ExactMolWt(m)),
+        key=lambda m: (_heavy_atom_count(m), CalcExactMolWt(m)),
         reverse=True,
     )
     best = organic[0]

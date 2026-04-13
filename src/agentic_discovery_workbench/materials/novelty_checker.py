@@ -54,7 +54,7 @@ RATE_LIMIT_DELAY_SECONDS: float = 0.1
 # --- Data structures ---------------------------------------------------------
 
 
-class NoveltyClassification(StrEnum):
+class MaterialsNoveltyClassification(StrEnum):
     """Binary novelty classification for a crystal structure."""
 
     KNOWN = "known"
@@ -65,7 +65,7 @@ class NoveltyClassification(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class NoveltyResult:
+class MaterialsNoveltyResult:
     """Result of a novelty check for one crystal structure.
 
     Attributes:
@@ -84,7 +84,7 @@ class NoveltyResult:
     """
 
     structure_id: str
-    classification: NoveltyClassification
+    classification: MaterialsNoveltyClassification
     matched_reference_id: str | None
     reference_db: str
     reference_db_version: str
@@ -230,7 +230,7 @@ class MaterialsNoveltyChecker:
 
     def check(
         self, structure_id: str, structure: Structure
-    ) -> NoveltyResult:
+    ) -> MaterialsNoveltyResult:
         """Check one structure for novelty against all reference databases.
 
         Iterates through clients in order.  On the first crystallographic
@@ -247,7 +247,7 @@ class MaterialsNoveltyChecker:
             structure: Post-relaxation pymatgen Structure to classify.
 
         Returns:
-            NoveltyResult with classification and match details.
+            MaterialsNoveltyResult with classification and match details.
         """
         logger.info("Novelty check for structure_id=%s", structure_id)
 
@@ -278,9 +278,9 @@ class MaterialsNoveltyChecker:
 
             matched_id = self._find_match(structure, candidates)
             if matched_id is not None:
-                return NoveltyResult(
+                return MaterialsNoveltyResult(
                     structure_id=structure_id,
-                    classification=NoveltyClassification.KNOWN,
+                    classification=MaterialsNoveltyClassification.KNOWN,
                     matched_reference_id=matched_id,
                     reference_db=client.db_name,
                     reference_db_version=client.db_version,
@@ -292,9 +292,9 @@ class MaterialsNoveltyChecker:
         # No match found in any database — report first client's metadata
         # as the primary reference (arbitrary but deterministic).
         first = self._clients[0]
-        return NoveltyResult(
+        return MaterialsNoveltyResult(
             structure_id=structure_id,
-            classification=NoveltyClassification.NOVEL,
+            classification=MaterialsNoveltyClassification.NOVEL,
             matched_reference_id=None,
             reference_db=first.db_name,
             reference_db_version=first.db_version,
@@ -333,7 +333,7 @@ def check_novelty(
     ltol: float = DEFAULT_LTOL,
     stol: float = DEFAULT_STOL,
     angle_tol: float = DEFAULT_ANGLE_TOL,
-) -> NoveltyResult:
+) -> MaterialsNoveltyResult:
     """Check a single structure for novelty (convenience wrapper).
 
     Creates a fresh ``MaterialsNoveltyChecker`` and runs one check.  For
@@ -349,7 +349,7 @@ def check_novelty(
         angle_tol: Angle tolerance in degrees.
 
     Returns:
-        NoveltyResult with classification and match details.
+        MaterialsNoveltyResult with classification and match details.
     """
     checker = MaterialsNoveltyChecker(
         clients=clients, ltol=ltol, stol=stol, angle_tol=angle_tol

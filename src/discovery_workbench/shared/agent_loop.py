@@ -68,21 +68,24 @@ class DiscoveryPipeline(Protocol):
 
     def generate(self, batch_size: int) -> list[Any]:
         """Produce a batch of candidate structures or molecules."""
-        ...
+        ...  # Protocol method — implementors provide the body
 
     def validate(self, candidates: list[Any]) -> list[Any]:
         """Filter candidates that fail domain-specific validity checks."""
-        ...
+        ...  # Protocol method — implementors provide the body
 
     def score(self, valid: list[Any]) -> list[tuple[Any, float]]:
         """Assign numeric scores to valid candidates."""
-        ...
+        ...  # Protocol method — implementors provide the body
 
     def filter_candidates(
         self, scored: list[tuple[Any, float]],
     ) -> list[tuple[Any, float]]:
         """Apply post-scoring filters (e.g. diversity, constraints)."""
-        ...
+        ...  # Protocol method — implementors provide the body
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}()"
 
 
 def assemble_shortlist(

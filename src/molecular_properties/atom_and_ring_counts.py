@@ -9,7 +9,7 @@ when passing invalid input.
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem import Descriptors, rdMolDescriptors
+from rdkit.Chem import rdMolDescriptors
 
 
 def _validate_mol(mol: Chem.Mol) -> None:
@@ -68,7 +68,7 @@ def calc_ring_count(mol: Chem.Mol) -> int:
         If *mol* is not an ``rdkit.Chem.Mol`` instance.
     """
     _validate_mol(mol)
-    return Descriptors.RingCount(mol)
+    return rdMolDescriptors.CalcNumRings(mol)
 
 
 def calc_aromatic_ring_count(mol: Chem.Mol) -> int:

@@ -9,14 +9,14 @@ stage-function naming convention used by the validation pipeline.
 from __future__ import annotations
 
 from agentic_discovery.materials.validation import (
-    ValidationResult,
+    MaterialsValidationResult,
     validate_allowed_elements,
     validate_atom_count,
 )
 from pymatgen.core import Structure
 
 
-def check_allowed_elements(structure: Structure) -> ValidationResult:
+def check_allowed_elements(structure: Structure) -> MaterialsValidationResult:
     """Check that *structure* contains no forbidden elements.
 
     Rejects structures containing noble gases, Tc (Z=43), Pm (Z=61),
@@ -27,13 +27,13 @@ def check_allowed_elements(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='allowed_elements'`` and
+        A :class:`MaterialsValidationResult` with ``stage='allowed_elements'`` and
         ``severity='hard'``.
     """
     return validate_allowed_elements(structure)
 
 
-def check_atom_count(structure: Structure) -> ValidationResult:
+def check_atom_count(structure: Structure) -> MaterialsValidationResult:
     """Check that *structure* has between 1 and 20 atoms (inclusive).
 
     Empty structures are physically meaningless; very large cells are
@@ -43,7 +43,7 @@ def check_atom_count(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='atom_count'`` and
+        A :class:`MaterialsValidationResult` with ``stage='atom_count'`` and
         ``severity='hard'``.
     """
     return validate_atom_count(structure)

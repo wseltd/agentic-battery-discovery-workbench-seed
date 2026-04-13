@@ -39,4 +39,4 @@ def calc_clogp(mol: Chem.Mol) -> float:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Crippen.MolLogP(mol)
+    return Crippen.MolLogP(mol)  # type: ignore[attr-defined]

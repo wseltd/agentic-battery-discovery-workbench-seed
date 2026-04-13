@@ -28,3 +28,4 @@ build/
 
 # Agent outputs
 agent_output/
+data/

@@ -1,8 +1,8 @@
-"""Tests for the Q33 discovery report schema (DiscoveryReport, MoleculeAnnex, MaterialsAnnex)."""
+"""Tests for the Q33 discovery report schema (DiscoveryReport, MoleculeAnnex, ReportMaterialsAnnex)."""
 
 from __future__ import annotations
 
-from amdw.reporting.schema import DiscoveryReport, MaterialsAnnex, MoleculeAnnex
+from amdw.reporting.schema import DiscoveryReport, MoleculeAnnex, ReportMaterialsAnnex
 from amdw.shared.evidence import EvidenceLevel
 
 
@@ -47,8 +47,8 @@ def _make_molecule_annex(**overrides: object) -> MoleculeAnnex:
     return MoleculeAnnex(**defaults)  # type: ignore[arg-type]
 
 
-def _make_materials_annex(**overrides: object) -> MaterialsAnnex:
-    """Build a MaterialsAnnex with deterministic defaults."""
+def _make_materials_annex(**overrides: object) -> ReportMaterialsAnnex:
+    """Build a ReportMaterialsAnnex with deterministic defaults."""
     defaults: dict[str, object] = {
         "generator": "mattergen-0.2.0",
         "scope_filters": {"max_atoms": 20, "excluded_elements": ["Tl", "Pb"]},
@@ -58,7 +58,7 @@ def _make_materials_annex(**overrides: object) -> MaterialsAnnex:
         "warnings": ["2 candidates below hull distance threshold"],
     }
     defaults.update(overrides)
-    return MaterialsAnnex(**defaults)  # type: ignore[arg-type]
+    return ReportMaterialsAnnex(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def test_molecule_annex_completeness() -> None:
 
 
 def test_materials_annex_completeness() -> None:
-    """MaterialsAnnex exposes all 6 fields with correct types and values."""
+    """ReportMaterialsAnnex exposes all 6 fields with correct types and values."""
     annex = _make_materials_annex()
 
     assert annex.generator is not None

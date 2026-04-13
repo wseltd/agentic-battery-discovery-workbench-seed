@@ -35,7 +35,7 @@ from enum import Enum
 from pathlib import Path
 
 from rdkit.Chem import Mol
-from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
+from rdkit.Chem.rdMolDescriptors import GetMorganFingerprintAsBitVect
 from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
 from rdkit.DataStructs import BulkTanimotoSimilarity, ExplicitBitVect
 

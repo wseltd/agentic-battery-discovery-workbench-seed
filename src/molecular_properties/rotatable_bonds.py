@@ -8,7 +8,7 @@ when passing invalid input.
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem import Descriptors
+from rdkit.Chem import rdMolDescriptors
 
 
 def calc_rotatable_bonds(mol: Chem.Mol) -> int:
@@ -38,4 +38,4 @@ def calc_rotatable_bonds(mol: Chem.Mol) -> int:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Descriptors.NumRotatableBonds(mol)
+    return int(rdMolDescriptors.CalcNumRotatableBonds(mol))

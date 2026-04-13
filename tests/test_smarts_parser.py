@@ -84,12 +84,14 @@ class TestBadPrefix:
     """Tokens without 'has:' or '!has:' prefix raise ValueError."""
 
     def test_no_prefix(self):
-        with pytest.raises(ValueError, match="must start with"):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("[#6]")
+        assert "must start with" in str(exc_info.value)
 
     def test_wrong_prefix(self):
-        with pytest.raises(ValueError, match="must start with"):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("contains:[#6]")
+        assert "must start with" in str(exc_info.value)
 
     def test_empty_string_raises_prefix_error(self):
         with pytest.raises(ValueError, match="must start with") as exc_info:
@@ -97,17 +99,20 @@ class TestBadPrefix:
         assert "must start with" in str(exc_info.value)
 
     def test_only_whitespace(self):
-        with pytest.raises(ValueError, match="must start with"):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("   ")
+        assert "must start with" in str(exc_info.value)
 
     def test_case_sensitive_prefix(self):
         """Prefix is case-sensitive — 'HAS:' is not valid."""
-        with pytest.raises(ValueError, match="must start with"):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("HAS:[#6]")
+        assert "must start with" in str(exc_info.value)
 
     def test_has_without_colon(self):
-        with pytest.raises(ValueError, match="must start with"):
+        with pytest.raises(ValueError, match="must start with") as exc_info:
             parse_smarts_constraint("has[#6]")
+        assert "must start with" in str(exc_info.value)
 
 
 # --- Empty SMARTS after prefix ---
@@ -117,20 +122,24 @@ class TestEmptySmarts:
     """SMARTS portion that is empty or whitespace-only raises ValueError."""
 
     def test_positive_empty(self):
-        with pytest.raises(ValueError, match="empty after prefix"):
+        with pytest.raises(ValueError, match="empty after prefix") as exc_info:
             parse_smarts_constraint("has:")
+        assert "empty after prefix" in str(exc_info.value)
 
     def test_negated_empty(self):
-        with pytest.raises(ValueError, match="empty after prefix"):
+        with pytest.raises(ValueError, match="empty after prefix") as exc_info:
             parse_smarts_constraint("!has:")
+        assert "empty after prefix" in str(exc_info.value)
 
     def test_positive_whitespace_only(self):
-        with pytest.raises(ValueError, match="empty after prefix"):
+        with pytest.raises(ValueError, match="empty after prefix") as exc_info:
             parse_smarts_constraint("has:   ")
+        assert "empty after prefix" in str(exc_info.value)
 
     def test_negated_whitespace_only(self):
-        with pytest.raises(ValueError, match="empty after prefix"):
+        with pytest.raises(ValueError, match="empty after prefix") as exc_info:
             parse_smarts_constraint("!has:   ")
+        assert "empty after prefix" in str(exc_info.value)
 
 
 # --- Invalid SMARTS patterns ---
@@ -140,14 +149,17 @@ class TestInvalidSmarts:
     """SMARTS strings that RDKit cannot parse raise ValueError."""
 
     def test_garbage_smarts(self):
-        with pytest.raises(ValueError, match="Invalid SMARTS"):
+        with pytest.raises(ValueError, match="Invalid SMARTS") as exc_info:
             parse_smarts_constraint("has:[[[invalid")
+        assert "Invalid SMARTS" in str(exc_info.value)
 
     def test_unbalanced_ring(self):
         """Unclosed ring digit — RDKit rejects this."""
-        with pytest.raises(ValueError, match="Invalid SMARTS"):
+        with pytest.raises(ValueError, match="Invalid SMARTS") as exc_info:
             parse_smarts_constraint("has:C1CC")
+        assert "Invalid SMARTS" in str(exc_info.value)
 
     def test_negated_invalid_smarts(self):
-        with pytest.raises(ValueError, match="Invalid SMARTS"):
+        with pytest.raises(ValueError, match="Invalid SMARTS") as exc_info:
             parse_smarts_constraint("!has:[[[invalid")
+        assert "Invalid SMARTS" in str(exc_info.value)

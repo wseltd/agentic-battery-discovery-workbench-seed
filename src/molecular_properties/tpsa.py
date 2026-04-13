@@ -38,4 +38,4 @@ def calc_tpsa(mol: Chem.Mol) -> float:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Descriptors.TPSA(mol)
+    return Descriptors.TPSA(mol)  # type: ignore[attr-defined]

@@ -10,13 +10,13 @@ validation pipeline.
 from __future__ import annotations
 
 from agentic_discovery.materials.validation import (
-    ValidationResult,
+    MaterialsValidationResult,
     validate_lattice_sanity,
 )
 from pymatgen.core import Structure
 
 
-def check_lattice(structure: Structure) -> ValidationResult:
+def check_lattice(structure: Structure) -> MaterialsValidationResult:
     """Check that *structure* has a numerically well-formed lattice.
 
     Rejects lattice matrices containing NaN or Inf, determinants that are
@@ -27,7 +27,7 @@ def check_lattice(structure: Structure) -> ValidationResult:
         structure: A pymatgen :class:`~pymatgen.core.Structure`.
 
     Returns:
-        A :class:`ValidationResult` with ``stage='lattice_sanity'`` and
+        A :class:`MaterialsValidationResult` with ``stage='lattice_sanity'`` and
         ``severity='hard'``.
     """
     return validate_lattice_sanity(structure)

@@ -11,7 +11,7 @@ from agentic_discovery_workbench.materials.duplicate_detector import (
     DEFAULT_ANGLE_TOL,
     DEFAULT_LTOL,
     DEFAULT_STOL,
-    DuplicateResult,
+    MaterialsDuplicateResult,
     PassType,
 )
 from agentic_discovery_workbench.materials.strict_pass import strict_deduplicate
@@ -270,16 +270,16 @@ class TestBatchDedup:
 
 
 class TestResultFields:
-    """Verify DuplicateResult fields carry correct values from strict pass."""
+    """Verify MaterialsDuplicateResult fields carry correct values from strict pass."""
 
     def test_result_has_correct_pass_type_and_fields(self) -> None:
-        """Each result is a DuplicateResult with POST_RELAX pass type."""
+        """Each result is a MaterialsDuplicateResult with POST_RELAX pass type."""
         results = strict_deduplicate(
             [("nacl_1", _nacl_rocksalt()), ("nacl_2", _nacl_rocksalt())]
         )
 
         first = results[0]
-        assert isinstance(first, DuplicateResult)
+        assert isinstance(first, MaterialsDuplicateResult)
         assert first.query_id == "nacl_1"
         assert first.duplicate_of is None
         assert first.pass_type == PassType.POST_RELAX

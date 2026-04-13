@@ -37,7 +37,7 @@ def calc_hbd(mol: Chem.Mol) -> int:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Descriptors.NumHDonors(mol)
+    return Descriptors.NumHDonors(mol)  # type: ignore[attr-defined]
 
 
 def calc_hba(mol: Chem.Mol) -> int:
@@ -66,4 +66,4 @@ def calc_hba(mol: Chem.Mol) -> int:
             f"Expected rdkit.Chem.Mol, got {type(mol).__name__}. "
             "Pass a valid RDKit molecule object."
         )
-    return Descriptors.NumHAcceptors(mol)
+    return Descriptors.NumHAcceptors(mol)  # type: ignore[attr-defined]

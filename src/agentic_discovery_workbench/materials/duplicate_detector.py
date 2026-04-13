@@ -1,7 +1,7 @@
 """Materials duplicate detection orchestrator.
 
 Thin orchestrator that delegates to the coarse (pre-relax) and strict
-(post-relax) detection passes.  Data structures (DuplicateResult,
+(post-relax) detection passes.  Data structures (MaterialsDuplicateResult,
 PassType) and default tolerances live here because both pass modules
 import them — keeping them in one place avoids circular dependencies
 and duplicated definitions.
@@ -45,7 +45,7 @@ class PassType(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class DuplicateResult:
+class MaterialsDuplicateResult:
     """Result of a duplicate check for one structure.
 
     Attributes:
@@ -105,7 +105,7 @@ class MaterialsDuplicateDetector:
     def detect_duplicates_pre_relax(
         self,
         structures: list[tuple[str, Structure]],
-    ) -> list[DuplicateResult]:
+    ) -> list[MaterialsDuplicateResult]:
         """Fast pre-relaxation duplicate screening via coarse pass.
 
         Delegates to ``coarse_deduplicate`` which groups by composition,
@@ -116,13 +116,13 @@ class MaterialsDuplicateDetector:
             structures: List of (id, Structure) pairs to check.
 
         Returns:
-            One DuplicateResult per input structure, in input order.
+            One MaterialsDuplicateResult per input structure, in input order.
         """
         logger.info(
             "Pre-relax duplicate check on %d structures", len(structures)
         )
         # Lazy import to break circular dependency: coarse_pass imports
-        # DuplicateResult and PassType from this module.
+        # MaterialsDuplicateResult and PassType from this module.
         from agentic_discovery_workbench.materials.coarse_pass import (
             coarse_deduplicate,
         )
@@ -132,7 +132,7 @@ class MaterialsDuplicateDetector:
     def detect_duplicates_post_relax(
         self,
         structures: list[tuple[str, Structure]],
-    ) -> list[DuplicateResult]:
+    ) -> list[MaterialsDuplicateResult]:
         """Rigorous post-relaxation duplicate detection via strict pass.
 
         Delegates to ``strict_deduplicate`` which applies Niggli reduction
@@ -143,13 +143,13 @@ class MaterialsDuplicateDetector:
             structures: List of (id, Structure) pairs to check.
 
         Returns:
-            One DuplicateResult per input structure, in input order.
+            One MaterialsDuplicateResult per input structure, in input order.
         """
         logger.info(
             "Post-relax duplicate check on %d structures", len(structures)
         )
         # Lazy import to break circular dependency: strict_pass imports
-        # DuplicateResult, PassType, and tolerance constants from this module.
+        # MaterialsDuplicateResult, PassType, and tolerance constants from this module.
         from agentic_discovery_workbench.materials.strict_pass import (
             strict_deduplicate,
         )

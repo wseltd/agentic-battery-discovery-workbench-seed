@@ -13,7 +13,7 @@ from agentic_discovery_workbench.materials.coarse_pass import (
     coarse_deduplicate,
 )
 from agentic_discovery_workbench.materials.duplicate_detector import (
-    DuplicateResult,
+    MaterialsDuplicateResult,
     PassType,
 )
 
@@ -237,7 +237,7 @@ class TestPairwiseMatching:
 
 
 class TestResultFields:
-    """Verify DuplicateResult fields carry correct values."""
+    """Verify MaterialsDuplicateResult fields carry correct values."""
 
     def test_result_has_correct_field_values(self) -> None:
         """Result fields must carry the correct tolerances and pass type."""
@@ -266,11 +266,11 @@ class TestResultFields:
         }
 
     def test_result_is_duplicate_result_with_expected_values(self) -> None:
-        """Each result is a DuplicateResult with correct domain values."""
+        """Each result is a MaterialsDuplicateResult with correct domain values."""
         results = coarse_deduplicate([("fe", _fe_bcc())])
 
         result = results[0]
-        assert isinstance(result, DuplicateResult)
+        assert isinstance(result, MaterialsDuplicateResult)
         # Value assertions — governance requires these beyond type checks
         assert result.query_id == "fe"
         assert result.is_duplicate is False

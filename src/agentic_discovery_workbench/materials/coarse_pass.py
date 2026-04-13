@@ -21,7 +21,7 @@ from pymatgen.core import Composition, Structure
 from pymatgen.core.structure_matcher import StructureMatcher
 
 from agentic_discovery_workbench.materials.duplicate_detector import (
-    DuplicateResult,
+    MaterialsDuplicateResult,
     PassType,
 )
 
@@ -77,7 +77,7 @@ def _volumes_close(v1: float, v2: float, tolerance: float) -> bool:
 def coarse_deduplicate(
     structures: list[tuple[str, Structure]],
     volume_tolerance: float = DEFAULT_VOLUME_TOLERANCE,
-) -> list[DuplicateResult]:
+) -> list[MaterialsDuplicateResult]:
     """Coarse pre-relax duplicate detection by composition and cell volume.
 
     Three-stage filter applied in order:
@@ -95,7 +95,7 @@ def coarse_deduplicate(
             Must be non-negative.
 
     Returns:
-        One DuplicateResult per input structure, in input order, with
+        One MaterialsDuplicateResult per input structure, in input order, with
         ``pass_type=PassType.PRE_RELAX``.
 
     Raises:
@@ -127,7 +127,7 @@ def coarse_deduplicate(
     }
 
     # Track per-structure results keyed by original index to preserve order
-    results: list[DuplicateResult] = []
+    results: list[MaterialsDuplicateResult] = []
 
     # Stage 1: group by reduced formula
     # Each formula maps to a list of volume sub-groups.
@@ -152,7 +152,7 @@ def coarse_deduplicate(
             )
 
         results.append(
-            DuplicateResult(
+            MaterialsDuplicateResult(
                 query_id=struct_id,
                 duplicate_of=duplicate_of,
                 pass_type=PassType.PRE_RELAX,

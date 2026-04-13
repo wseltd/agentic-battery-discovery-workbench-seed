@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from rdkit import Chem
+from rdkit import Chem  # provided by rdkit-pypi in pyproject.toml
 from rdkit.Chem import Descriptors
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,17 @@ logger = logging.getLogger(__name__)
 # Supported numeric property calculators.
 # Mapping from canonical property name to RDKit descriptor function.
 _PROPERTY_CALCULATORS: dict[str, Any] = {
-    "molecular_weight": Descriptors.MolWt,
-    "clogp": Descriptors.MolLogP,
-    "hbd": Descriptors.NumHDonors,
-    "hba": Descriptors.NumHAcceptors,
-    "tpsa": Descriptors.TPSA,
-    "rotatable_bonds": Descriptors.NumRotatableBonds,
+    "molecular_weight": Descriptors.MolWt,  # type: ignore[attr-defined]
+    "clogp": Descriptors.MolLogP,  # type: ignore[attr-defined]
+    "hbd": Descriptors.NumHDonors,  # type: ignore[attr-defined]
+    "hba": Descriptors.NumHAcceptors,  # type: ignore[attr-defined]
+    "tpsa": Descriptors.TPSA,  # type: ignore[attr-defined]
+    "rotatable_bonds": Descriptors.NumRotatableBonds,  # type: ignore[attr-defined]
 }
 
 
 @dataclass(frozen=True)
-class SingleConstraintResult:
+class SingleMolecularConstraintResult:
     """Result of evaluating one constraint against a molecule.
 
     Parameters
@@ -62,7 +62,7 @@ class SingleConstraintResult:
 
 
 @dataclass
-class ConstraintResult:
+class MolecularConstraintResult:
     """Aggregated result of all constraints for a single molecule.
 
     Parameters
@@ -79,7 +79,7 @@ class ConstraintResult:
 
     smiles: str
     all_satisfied: bool = field(default=True)
-    results: list[SingleConstraintResult] = field(default_factory=list)
+    results: list[SingleMolecularConstraintResult] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # Derive all_satisfied from individual results when the caller
@@ -116,7 +116,7 @@ class ConstraintChecker:
         operator: str,
         actual_value: float,
         target_value: float | tuple[float | None, float | None],
-    ) -> SingleConstraintResult:
+    ) -> SingleMolecularConstraintResult:
         """Evaluate a single numeric comparison.
 
         Parameters
@@ -134,7 +134,7 @@ class ConstraintChecker:
         """
         if operator == "range":
             if not isinstance(target_value, (tuple, list)) or len(target_value) != 2:
-                return SingleConstraintResult(
+                return SingleMolecularConstraintResult(
                     constraint_name=constraint_name,
                     operator=operator,
                     target_value=target_value,
@@ -150,7 +150,7 @@ class ConstraintChecker:
                 f"{constraint_name} {actual_value} not in range "
                 f"[{min_val}, {max_val}]"
             )
-            return SingleConstraintResult(
+            return SingleMolecularConstraintResult(
                 constraint_name=constraint_name,
                 operator=operator,
                 target_value=target_value,
@@ -169,7 +169,7 @@ class ConstraintChecker:
             "==": actual_value == scalar_target,
         }
         if operator not in scalar_ops:
-            return SingleConstraintResult(
+            return SingleMolecularConstraintResult(
                 constraint_name=constraint_name,
                 operator=operator,
                 target_value=target_value,
@@ -182,7 +182,7 @@ class ConstraintChecker:
         reason = None if passed else (
             f"{constraint_name} {actual_value} does not satisfy {operator} {target_value}"
         )
-        return SingleConstraintResult(
+        return SingleMolecularConstraintResult(
             constraint_name=constraint_name,
             operator=operator,
             target_value=target_value,
@@ -197,7 +197,7 @@ class ConstraintChecker:
         smarts: str,
         mol: Chem.Mol,
         required: bool,
-    ) -> SingleConstraintResult:
+    ) -> SingleMolecularConstraintResult:
         """Evaluate a SMARTS substructure constraint.
 
         Parameters
@@ -214,7 +214,7 @@ class ConstraintChecker:
         query = Chem.MolFromSmarts(smarts)
         if query is None:
             logger.warning("Invalid SMARTS pattern: %s", smarts)
-            return SingleConstraintResult(
+            return SingleMolecularConstraintResult(
                 constraint_name=constraint_name,
                 operator="required" if required else "forbidden",
                 target_value=smarts,
@@ -232,7 +232,7 @@ class ConstraintChecker:
             passed = not has_match
             reason = None if passed else f"Forbidden SMARTS '{smarts}' is present"
 
-        return SingleConstraintResult(
+        return SingleMolecularConstraintResult(
             constraint_name=constraint_name,
             operator="required" if required else "forbidden",
             target_value=smarts,
@@ -241,7 +241,7 @@ class ConstraintChecker:
             reason=reason,
         )
 
-    def check(self, mol: Chem.Mol, smiles: str) -> ConstraintResult:
+    def check(self, mol: Chem.Mol, smiles: str) -> MolecularConstraintResult:
         """Evaluate all constraints against a molecule.
 
         The caller is responsible for parsing the SMILES into a Mol object.
@@ -257,7 +257,7 @@ class ConstraintChecker:
 
         Returns
         -------
-        ConstraintResult
+        MolecularConstraintResult
             Aggregated result with per-constraint details.
 
         Raises
@@ -271,14 +271,14 @@ class ConstraintChecker:
                 "The caller must provide a valid RDKit Mol object."
             )
 
-        results: list[SingleConstraintResult] = []
+        results: list[SingleMolecularConstraintResult] = []
         for constraint in self.parsed_constraints:
             ctype = constraint["type"]
             if ctype == "numeric":
                 prop_name = constraint["property"]
                 calculator = _PROPERTY_CALCULATORS.get(prop_name)
                 if calculator is None:
-                    results.append(SingleConstraintResult(
+                    results.append(SingleMolecularConstraintResult(
                         constraint_name=prop_name,
                         operator=constraint["operator"],
                         target_value=constraint["value"],
@@ -307,4 +307,4 @@ class ConstraintChecker:
                     )
                 )
 
-        return ConstraintResult(smiles=smiles, results=results)
+        return MolecularConstraintResult(smiles=smiles, results=results)

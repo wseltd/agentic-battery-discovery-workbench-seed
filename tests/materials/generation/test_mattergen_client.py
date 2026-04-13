@@ -48,11 +48,17 @@ def test_config_optional_property_targets() -> None:
 def test_config_empty_scope_raises() -> None:
     with pytest.raises(ValueError, match="chemistry_scope"):
         MatterGenConfig(chemistry_scope=[])
+    # Boundary-pair: single-element scope is the minimum valid config.
+    cfg = MatterGenConfig(chemistry_scope=["Si"])
+    assert cfg.chemistry_scope == ["Si"]
 
 
 def test_config_num_samples_zero_raises() -> None:
     with pytest.raises(ValueError, match="num_samples"):
         MatterGenConfig(chemistry_scope=["Si"], num_samples=0)
+    # Boundary-pair: num_samples=1 is the minimum valid value.
+    cfg = MatterGenConfig(chemistry_scope=["Si"], num_samples=1)
+    assert cfg.num_samples == 1
 
 
 def test_config_max_atoms_at_boundary() -> None:
@@ -95,7 +101,7 @@ def test_from_dict_uses_defaults_for_missing_keys() -> None:
 
 
 def test_from_dict_missing_chemistry_scope_raises() -> None:
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match="chemistry_scope"):
         MatterGenConfig.from_dict({"space_group_number": 62})
 
 
@@ -200,6 +206,11 @@ def test_generate_without_mattergen_installed_importerror() -> None:
     with patch.dict("sys.modules", {"mattergen": None}):
         with pytest.raises(ImportError, match="MatterGen is not installed"):
             client.generate(cfg)
+    # Boundary-pair: when mattergen is available, no ImportError.
+    mock_mod = _mock_mattergen(["struct"])
+    with patch.dict("sys.modules", {"mattergen": mock_mod}):
+        result = client.generate(cfg)
+    assert isinstance(result, list)
 
 
 def test_generate_whole_batch_failure_returns_empty(

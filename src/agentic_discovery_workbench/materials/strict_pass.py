@@ -22,7 +22,7 @@ from agentic_discovery_workbench.materials.duplicate_detector import (
     DEFAULT_ANGLE_TOL,
     DEFAULT_LTOL,
     DEFAULT_STOL,
-    DuplicateResult,
+    MaterialsDuplicateResult,
     PassType,
 )
 from agentic_discovery_workbench.materials.niggli_reduce import safe_niggli_reduce
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 def strict_deduplicate(
     structures: list[tuple[str, Structure]],
-) -> list[DuplicateResult]:
+) -> list[MaterialsDuplicateResult]:
     """Strict post-relax duplicate detection via Niggli reduction and StructureMatcher.
 
     Three steps:
@@ -47,7 +47,7 @@ def strict_deduplicate(
         structures: List of (id, Structure) pairs to check.
 
     Returns:
-        One DuplicateResult per input structure, in input order, with
+        One MaterialsDuplicateResult per input structure, in input order, with
         ``pass_type=PassType.POST_RELAX``.
     """
     logger.info("Strict post-relax dedup on %d structures", len(structures))
@@ -70,7 +70,7 @@ def strict_deduplicate(
         (sid, safe_niggli_reduce(s)) for sid, s in structures
     ]
 
-    results: list[DuplicateResult] = []
+    results: list[MaterialsDuplicateResult] = []
     canonical: list[tuple[str, Structure]] = []
 
     for struct_id, structure in reduced:
@@ -80,7 +80,7 @@ def strict_deduplicate(
             canonical.append((struct_id, structure))
 
         results.append(
-            DuplicateResult(
+            MaterialsDuplicateResult(
                 query_id=struct_id,
                 duplicate_of=duplicate_of,
                 pass_type=PassType.POST_RELAX,

@@ -16,7 +16,7 @@ from pymatgen.core import Lattice, Structure
 
 from agentic_discovery_workbench.materials.novelty_checker import (
     MaterialsNoveltyChecker,
-    NoveltyClassification,
+    MaterialsNoveltyClassification,
     ReferenceDBClient,
 )
 from agentic_discovery_workbench.materials.novelty_matcher import (
@@ -185,7 +185,7 @@ def test_novelty_exact_known_in_mp():
 
     result = checker.check("gen-1", nacl)
 
-    assert result.classification == NoveltyClassification.KNOWN
+    assert result.classification == MaterialsNoveltyClassification.KNOWN
     assert result.matched_reference_id == "mp-22862"
     assert result.reference_db == "MP"
 
@@ -199,7 +199,7 @@ def test_novelty_novel_like_no_mp_match():
 
     result = checker.check("gen-1", nacl)
 
-    assert result.classification == NoveltyClassification.NOVEL
+    assert result.classification == MaterialsNoveltyClassification.NOVEL
     assert result.matched_reference_id is None
 
 
@@ -222,5 +222,5 @@ def test_novelty_close_analogue():
 
     result = checker.check("gen-1", nacl)
 
-    assert result.classification == NoveltyClassification.KNOWN
+    assert result.classification == MaterialsNoveltyClassification.KNOWN
     assert result.matched_reference_id == "mp-22862"

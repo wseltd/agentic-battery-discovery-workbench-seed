@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import SupportsFloat, cast
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def compute_molecular_metrics(
 
     # Diversity: mean of per-candidate diversity_score when provided.
     diversity_scores = [
-        float(c["diversity_score"])
+        float(cast(SupportsFloat, c["diversity_score"]))
         for c in candidates
         if "diversity_score" in c
     ]

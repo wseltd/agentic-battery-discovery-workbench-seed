@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ from ammd.molecules.report import (
 
 # -- fixtures ----------------------------------------------------------------
 
-def _make_validity_stats(**overrides: object) -> ValidityStats:
+def _make_validity_stats(**overrides: Any) -> ValidityStats:
     defaults = dict(
         total_generated=100,
         syntax_valid=95,
@@ -35,7 +36,7 @@ def _make_validity_stats(**overrides: object) -> ValidityStats:
     return ValidityStats(**defaults)
 
 
-def _make_uniqueness_stats(**overrides: object) -> UniquenessStats:
+def _make_uniqueness_stats(**overrides: Any) -> UniquenessStats:
     defaults = dict(
         total_valid=90,
         exact_duplicates_removed=5,
@@ -46,7 +47,7 @@ def _make_uniqueness_stats(**overrides: object) -> UniquenessStats:
     return UniquenessStats(**defaults)
 
 
-def _make_novelty_stats(**overrides: object) -> NoveltyStats:
+def _make_novelty_stats(**overrides: Any) -> NoveltyStats:
     defaults = dict(
         reference_db="ChEMBL_36",
         reference_version="36",
@@ -80,7 +81,7 @@ def _make_constraint_mw() -> ConstraintResult:
     )
 
 
-def _make_annex(**overrides: object) -> MoleculeReportAnnex:
+def _make_annex(**overrides: Any) -> MoleculeReportAnnex:
     kwargs: dict = dict(
         generator_config={"model": "reinvent4"},
         validity_stats=_make_validity_stats(),

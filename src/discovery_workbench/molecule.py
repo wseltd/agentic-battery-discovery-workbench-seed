@@ -12,7 +12,7 @@ __version__ = "0.1.0"
 
 import dataclasses
 
-from rdkit import Chem
+from rdkit import Chem  # provided by rdkit-pypi in pyproject.toml
 from rdkit.Chem import AllChem, rdmolfiles
 from rdkit.Chem.inchi import MolToInchi, InchiToInchiKey
 from rdkit.Chem.SaltRemover import SaltRemover
@@ -183,9 +183,9 @@ class CanonicalMolecule:
         """
         mol_copy = Chem.RWMol(self._mol)
         mol_copy = Chem.AddHs(mol_copy)
-        params = AllChem.ETKDGv3()
+        params = AllChem.ETKDGv3()  # type: ignore[attr-defined]
         params.randomSeed = random_seed
-        status = AllChem.EmbedMolecule(mol_copy, params)
+        status = AllChem.EmbedMolecule(mol_copy, params)  # type: ignore[attr-defined]
         if status == -1:
             raise ValueError(
                 f"Conformer embedding failed for {self.canonical_smiles!r}. "

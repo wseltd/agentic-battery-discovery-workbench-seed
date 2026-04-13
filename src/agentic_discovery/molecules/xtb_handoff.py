@@ -9,8 +9,8 @@ from __future__ import annotations
 import dataclasses
 import logging
 
-from rdkit import Chem
-from rdkit.Chem import AllChem, inchi
+from rdkit import Chem  # provided by rdkit-pypi in pyproject.toml
+from rdkit.Chem import AllChem, inchi  # provided by rdkit-pypi in pyproject.toml
 
 from agentic_discovery.shared.evidence import EvidenceLevel
 
@@ -163,15 +163,15 @@ class XtbHandoffBuilder:
         warnings: list[str],
     ) -> tuple[Chem.Mol, list[str]]:
         """Try ETKDG, then fall back to random coordinates."""
-        params = AllChem.ETKDGv3()
-        status = AllChem.EmbedMolecule(mol_h, params)
+        params = AllChem.ETKDGv3()  # type: ignore[attr-defined]
+        status = AllChem.EmbedMolecule(mol_h, params)  # type: ignore[attr-defined]
         if status == 0:
             return mol_h, warnings
 
         # ETKDG failed — retry with random coordinates.
         logger.warning("ETKDG embedding failed; retrying with random coordinates")
         warnings.append("ETKDG failed — used random coordinate embedding")
-        status = AllChem.EmbedMolecule(mol_h, randomSeed=42, useRandomCoords=True)
+        status = AllChem.EmbedMolecule(mol_h, randomSeed=42, useRandomCoords=True)  # type: ignore[attr-defined]
         if status == 0:
             return mol_h, warnings
 

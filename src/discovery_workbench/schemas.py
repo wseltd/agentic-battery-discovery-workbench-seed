@@ -20,6 +20,11 @@ ROUTING_DOMAINS = frozenset(
     {"small_molecule_design", "inorganic_materials_design", "unsupported"}
 )
 
+# Confidence at or above this level means the router is sure enough that
+# a clarification question would be contradictory.  Mirrors the auto
+# threshold used by the confidence scorer (T007).
+_CLARIFICATION_CONFIDENCE_CEILING: float = 0.80
+
 
 @dataclass
 class MoleculeRequest:
@@ -168,4 +173,39 @@ class RoutingResult:
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(
                 f"confidence must be in [0, 1], got {self.confidence!r}"
+            )
+
+        # 'unsupported' domain must not carry a parsed request.
+        if self.domain == "unsupported" and self.parsed_request is not None:
+            raise ValueError(
+                "parsed_request must be None when domain is 'unsupported'"
+            )
+
+        # Routable domains require a matching parsed_request type.
+        if self.domain == "small_molecule_design":
+            if not isinstance(self.parsed_request, MoleculeRequest):
+                raise TypeError(
+                    f"parsed_request must be a MoleculeRequest for domain "
+                    f"'small_molecule_design', got "
+                    f"{type(self.parsed_request).__name__}"
+                )
+        elif self.domain == "inorganic_materials_design":
+            if not isinstance(self.parsed_request, MaterialsRequest):
+                raise TypeError(
+                    f"parsed_request must be a MaterialsRequest for domain "
+                    f"'inorganic_materials_design', got "
+                    f"{type(self.parsed_request).__name__}"
+                )
+
+        # A clarification question is only meaningful when the router is
+        # uncertain (low confidence) or could not produce a parsed request.
+        if (
+            self.clarification_question is not None
+            and self.parsed_request is not None
+            and self.confidence >= _CLARIFICATION_CONFIDENCE_CEILING
+        ):
+            raise ValueError(
+                f"clarification_question must be None when confidence "
+                f"(>= {_CLARIFICATION_CONFIDENCE_CEILING}) is high and "
+                f"parsed_request is present"
             )

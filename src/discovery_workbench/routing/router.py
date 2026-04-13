@@ -27,7 +27,7 @@ from discovery_workbench.routing.tokeniser import tokenise
 
 
 @dataclass(frozen=True)
-class RoutingResult:
+class DeterministicRoutingResult:
     """Immutable result of the deterministic routing gate.
 
     Frozen because routing verdicts must not be mutated after the
@@ -59,11 +59,11 @@ class RoutingResult:
             )
 
 
-def route_deterministic(text: str) -> RoutingResult:
+def route_deterministic(text: str) -> DeterministicRoutingResult:
     """Route a user request to a domain using keyword matching.
 
     Tokenises *text* into unigrams and bigrams, classifies each token
-    against the keyword registry, and returns a :class:`RoutingResult`.
+    against the keyword registry, and returns a :class:`DeterministicRoutingResult`.
 
     Routing rules (in priority order):
 
@@ -84,7 +84,7 @@ def route_deterministic(text: str) -> RoutingResult:
 
     Returns
     -------
-    RoutingResult
+    DeterministicRoutingResult
         Frozen verdict with matched keywords and domain assignment.
     """
     # Delegate tokenisation to the shared tokeniser (T006.b) — keeps
@@ -106,7 +106,7 @@ def route_deterministic(text: str) -> RoutingResult:
 
     # Rule 1: ambiguity keywords block routing unconditionally
     if ambiguity_hits:
-        return RoutingResult(
+        return DeterministicRoutingResult(
             domain=None,
             matched_keywords=frozenset(matched_keywords),
             ambiguity_hits=frozenset(ambiguity_hits),
@@ -129,7 +129,7 @@ def route_deterministic(text: str) -> RoutingResult:
         # Rule 5: no keywords at all
         resolved = None
 
-    return RoutingResult(
+    return DeterministicRoutingResult(
         domain=resolved,
         matched_keywords=frozenset(matched_keywords),
         ambiguity_hits=frozenset(ambiguity_hits),

@@ -12,7 +12,7 @@ known Tanimoto similarities.  No external databases, no mocks.
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
+from rdkit.Chem.rdMolDescriptors import GetMorganFingerprintAsBitVect
 from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
 
 from discovery_workbench.molecules.novelty import (

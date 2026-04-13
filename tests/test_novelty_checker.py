@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import pytest
 from rdkit.Chem import MolFromSmiles
-from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
+from rdkit.Chem.rdMolDescriptors import GetMorganFingerprintAsBitVect
 from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi
+from rdkit.DataStructs import ExplicitBitVect
 
 from workbench.molecules.novelty_checker import (
     CLOSE_ANALOGUE_THRESHOLD,
@@ -28,7 +29,7 @@ from workbench.shared.evidence import EvidenceLevel
 # --- Helpers ----------------------------------------------------------------
 
 
-def _mol_to_ref_tuple(smiles: str) -> tuple[str, str, object]:
+def _mol_to_ref_tuple(smiles: str) -> tuple[str, str, ExplicitBitVect]:
     """Convert a SMILES string to a (smiles, inchikey, fingerprint) tuple."""
     mol = MolFromSmiles(smiles)
     inchikey = InchiToInchiKey(MolToInchi(mol))

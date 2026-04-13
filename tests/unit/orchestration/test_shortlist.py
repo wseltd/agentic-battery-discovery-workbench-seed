@@ -143,8 +143,9 @@ class TestBoundaryConditions:
 
     def test_negative_output_count_raises_value_error(self) -> None:
         """Negative output_count is rejected at the boundary."""
-        with pytest.raises(ValueError, match="output_count must be >= 0"):
+        with pytest.raises(ValueError, match="output_count must be >= 0") as exc_info:
             assemble_shortlist([("a", 0.5)], output_count=-1)
+        assert "output_count" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
