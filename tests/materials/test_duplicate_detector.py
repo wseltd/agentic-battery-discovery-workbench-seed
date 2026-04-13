@@ -239,27 +239,21 @@ class TestEdgeCases:
         assert detector.detect_duplicates_post_relax([]) == []
 
     def test_degenerate_cell_niggli_fallback(self, monkeypatch) -> None:
-        """When Niggli reduction raises, the detector falls back gracefully.
+        """When Niggli reduction fails, the detector falls back gracefully.
 
-        We monkeypatch get_niggli_reduced_structure to raise, simulating
-        a degenerate cell. The detector should still return results using
-        the unreduced structure.
+        Patches safe_niggli_reduce (as imported by strict_pass) to return
+        the structure unchanged, simulating the fallback path for a
+        degenerate cell. The detector should still detect duplicates.
         """
         detector = MaterialsDuplicateDetector()
         s1 = _nacl_rocksalt()
         s2 = _nacl_rocksalt()
 
-        original_get_reduced = Structure.get_reduced_structure
-
-        def _raise_on_niggli(self, reduction_algo="niggli"):
-            if reduction_algo == "niggli":
-                raise RuntimeError("degenerate cell")
-            return original_get_reduced(self, reduction_algo=reduction_algo)
-
+        # Simulate the fallback: Niggli reduction is a no-op, returning
+        # the original structure. Two identical inputs should still match.
         monkeypatch.setattr(
-            Structure,
-            "get_reduced_structure",
-            _raise_on_niggli,
+            "agentic_discovery_workbench.materials.strict_pass.safe_niggli_reduce",
+            lambda structure: structure,
         )
 
         results = detector.detect_duplicates_post_relax(

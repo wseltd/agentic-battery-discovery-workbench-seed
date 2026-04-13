@@ -1,8 +1,10 @@
-"""Materials duplicate detection using composition matching and structure comparison.
+"""Materials duplicate detection orchestrator.
 
-Pre-relaxation pass uses composition formula and cell parameter similarity
-for fast screening. Post-relaxation pass uses pymatgen StructureMatcher
-with Niggli-reduced cells for rigorous crystallographic comparison.
+Thin orchestrator that delegates to the coarse (pre-relax) and strict
+(post-relax) detection passes.  Data structures (DuplicateResult,
+PassType) and default tolerances live here because both pass modules
+import them — keeping them in one place avoids circular dependencies
+and duplicated definitions.
 
 Chose two-pass design because pre-relax structures may have distorted cells
 that confuse StructureMatcher, while post-relax structures have cleaner
@@ -16,7 +18,6 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from pymatgen.core import Structure
-from pymatgen.core.structure_matcher import StructureMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -63,71 +64,6 @@ class DuplicateResult:
     is_duplicate: bool
 
 
-# --- Helpers -----------------------------------------------------------------
-
-
-def _niggli_reduce_safe(structure: Structure) -> Structure:
-    """Niggli-reduce a structure, falling back to the original on failure.
-
-    Degenerate cells (near-zero volume, coplanar vectors) can cause Niggli
-    reduction to fail numerically. We fall back to the unreduced structure
-    rather than crashing the entire batch.
-
-    Args:
-        structure: Pymatgen Structure to reduce.
-
-    Returns:
-        Niggli-reduced structure, or the original if reduction fails.
-    """
-    try:
-        return structure.get_reduced_structure(reduction_algo="niggli")
-    except Exception:
-        logger.warning(
-            "Niggli reduction failed for structure; using unreduced cell"
-        )
-        return structure
-
-
-def _cell_params_close(
-    s1: Structure,
-    s2: Structure,
-    ltol: float,
-    angle_tol: float,
-) -> bool:
-    """Compare lattice parameters of two structures within tolerance.
-
-    Lengths are sorted before comparison to handle axis permutations.
-    Length tolerance is fractional (relative to mean). Angle tolerance is
-    absolute in degrees.
-
-    Args:
-        s1: First structure.
-        s2: Second structure.
-        ltol: Fractional length tolerance.
-        angle_tol: Absolute angle tolerance in degrees.
-
-    Returns:
-        True if cell parameters match within tolerance.
-    """
-    p1 = s1.lattice.parameters  # (a, b, c, alpha, beta, gamma)
-    p2 = s2.lattice.parameters
-
-    lengths1 = sorted(p1[:3])
-    lengths2 = sorted(p2[:3])
-    for l1, l2 in zip(lengths1, lengths2):
-        mean_len = (l1 + l2) / 2.0
-        if mean_len > 0 and abs(l1 - l2) / mean_len > ltol:
-            return False
-
-    angles1 = sorted(p1[3:])
-    angles2 = sorted(p2[3:])
-    for a1, a2 in zip(angles1, angles2):
-        if abs(a1 - a2) > angle_tol:
-            return False
-
-    return True
-
-
 # --- Detector ----------------------------------------------------------------
 
 
@@ -170,12 +106,11 @@ class MaterialsDuplicateDetector:
         self,
         structures: list[tuple[str, Structure]],
     ) -> list[DuplicateResult]:
-        """Fast pre-relaxation duplicate screening by composition and cell shape.
+        """Fast pre-relaxation duplicate screening via coarse pass.
 
-        Groups structures by reduced formula, then within each group compares
-        sorted lattice parameters. This is a heuristic — it catches obvious
-        copies but cannot detect symmetry-equivalent structures with different
-        cell conventions.
+        Delegates to ``coarse_deduplicate`` which groups by composition,
+        volume per atom, and lenient StructureMatcher.  This is a heuristic
+        that catches obvious copies before expensive relaxation.
 
         Args:
             structures: List of (id, Structure) pairs to check.
@@ -186,52 +121,23 @@ class MaterialsDuplicateDetector:
         logger.info(
             "Pre-relax duplicate check on %d structures", len(structures)
         )
-        if not structures:
-            return []
+        # Lazy import to break circular dependency: coarse_pass imports
+        # DuplicateResult and PassType from this module.
+        from agentic_discovery_workbench.materials.coarse_pass import (
+            coarse_deduplicate,
+        )
 
-        results: list[DuplicateResult] = []
-        seen: dict[str, list[tuple[str, Structure]]] = {}
-
-        for struct_id, structure in structures:
-            formula = structure.composition.reduced_formula
-            duplicate_of = None
-
-            if formula in seen:
-                for earlier_id, earlier_struct in seen[formula]:
-                    if _cell_params_close(
-                        structure,
-                        earlier_struct,
-                        self._ltol,
-                        self._angle_tol,
-                    ):
-                        duplicate_of = earlier_id
-                        break
-
-            if duplicate_of is None:
-                seen.setdefault(formula, []).append((struct_id, structure))
-
-            results.append(
-                DuplicateResult(
-                    query_id=struct_id,
-                    duplicate_of=duplicate_of,
-                    pass_type=PassType.PRE_RELAX,
-                    matcher_tolerances=self.matcher_tolerances,
-                    is_duplicate=duplicate_of is not None,
-                )
-            )
-
-        return results
+        return coarse_deduplicate(structures)
 
     def detect_duplicates_post_relax(
         self,
         structures: list[tuple[str, Structure]],
     ) -> list[DuplicateResult]:
-        """Rigorous post-relaxation duplicate detection using StructureMatcher.
+        """Rigorous post-relaxation duplicate detection via strict pass.
 
-        Applies Niggli reduction before comparison so that different cell
-        choices for the same crystal are correctly identified as duplicates.
-        Falls back to unreduced cells if Niggli reduction fails (e.g.,
-        degenerate zero-volume cells).
+        Delegates to ``strict_deduplicate`` which applies Niggli reduction
+        and pymatgen StructureMatcher with default tolerances.  Falls back
+        to SpacegroupAnalyzer primitive structure if Niggli reduction fails.
 
         Args:
             structures: List of (id, Structure) pairs to check.
@@ -242,41 +148,10 @@ class MaterialsDuplicateDetector:
         logger.info(
             "Post-relax duplicate check on %d structures", len(structures)
         )
-        if not structures:
-            return []
-
-        matcher = StructureMatcher(
-            ltol=self._ltol,
-            stol=self._stol,
-            angle_tol=self._angle_tol,
+        # Lazy import to break circular dependency: strict_pass imports
+        # DuplicateResult, PassType, and tolerance constants from this module.
+        from agentic_discovery_workbench.materials.strict_pass import (
+            strict_deduplicate,
         )
 
-        reduced: list[tuple[str, Structure]] = [
-            (sid, _niggli_reduce_safe(s)) for sid, s in structures
-        ]
-
-        results: list[DuplicateResult] = []
-        canonical: list[tuple[str, Structure]] = []
-
-        for struct_id, structure in reduced:
-            duplicate_of = None
-
-            for earlier_id, earlier_struct in canonical:
-                if matcher.fit(structure, earlier_struct):
-                    duplicate_of = earlier_id
-                    break
-
-            if duplicate_of is None:
-                canonical.append((struct_id, structure))
-
-            results.append(
-                DuplicateResult(
-                    query_id=struct_id,
-                    duplicate_of=duplicate_of,
-                    pass_type=PassType.POST_RELAX,
-                    matcher_tolerances=self.matcher_tolerances,
-                    is_duplicate=duplicate_of is not None,
-                )
-            )
-
-        return results
+        return strict_deduplicate(structures)
