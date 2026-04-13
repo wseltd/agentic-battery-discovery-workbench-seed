@@ -116,8 +116,10 @@ def test_custom_threshold_nonconverged():
 
 def test_nonpositive_threshold_raises():
     """Zero or negative threshold raises ValueError."""
-    with pytest.raises(ValueError, match="threshold must be positive"):
+    with pytest.raises(ValueError, match="threshold must be positive") as exc_info:
         stability_score(0.05, converged=True, threshold=0.0)
+    assert "threshold must be positive" in str(exc_info.value)
 
-    with pytest.raises(ValueError, match="threshold must be positive"):
+    with pytest.raises(ValueError, match="threshold must be positive") as exc_info:
         stability_score(0.05, converged=True, threshold=-0.1)
+    assert "threshold must be positive" in str(exc_info.value)
