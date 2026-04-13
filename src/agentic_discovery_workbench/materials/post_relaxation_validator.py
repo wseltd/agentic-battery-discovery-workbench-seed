@@ -158,6 +158,32 @@ def _get_spacegroup_number(structure: Structure, symprec: float) -> int:
     return analyzer.get_space_group_number()
 
 
+def _check_symmetry(
+    pre_relax: Structure,
+    post_relax: Structure,
+    symprec: float = DEFAULT_SYMPREC,
+) -> tuple[int, int, bool]:
+    """Compare spacegroup symmetry before and after relaxation.
+
+    Uses SpacegroupAnalyzer with the *same* symprec for both structures
+    so that the comparison is internally consistent.
+
+    Args:
+        pre_relax: Structure before relaxation.
+        post_relax: Structure after relaxation.
+        symprec: Symmetry precision in angstroms, forwarded to
+            SpacegroupAnalyzer for both structures.
+
+    Returns:
+        Tuple of (pre_relax_spacegroup, post_relax_spacegroup,
+        symmetry_changed).  symmetry_changed is True when the two
+        spacegroup numbers differ.
+    """
+    pre_sg = _get_spacegroup_number(pre_relax, symprec)
+    post_sg = _get_spacegroup_number(post_relax, symprec)
+    return pre_sg, post_sg, pre_sg != post_sg
+
+
 def _find_duplicate(
     struct_id: str,
     structure: Structure,
@@ -248,9 +274,9 @@ def validate_post_relaxation(
         cov_valid, min_dist = _check_distances_post_relax(post_relax)
         distance_valid = cov_valid and min_dist >= min_distance_threshold
 
-        pre_sg = _get_spacegroup_number(pre_relax, symprec)
-        post_sg = _get_spacegroup_number(post_relax, symprec)
-        symmetry_changed = pre_sg != post_sg
+        pre_sg, post_sg, symmetry_changed = _check_symmetry(
+            pre_relax, post_relax, symprec
+        )
 
         duplicate_of = _find_duplicate(
             struct_id, post_relax, canonical, matcher
