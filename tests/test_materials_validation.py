@@ -1,442 +1,187 @@
-"""Tests for materials structure validation (parse, lattice, elements, atom count,
-interatomic distances, coordination sanity)."""
+"""Tests for composite pre-relaxation structure validation (validate_structure).
+
+9 tests covering three categories:
+  - Valid-pass: NaCl rocksalt, LiFePO4-like olivine, BCC iron
+  - Reject: technetium (forbidden element), 25 atoms (exceeds cap), neon (noble gas)
+  - Flag: short interatomic distance, extreme coordination, 2D layered in 3D cell
+"""
 
 from __future__ import annotations
 
-import pytest
 from pymatgen.core import Lattice, Structure
 
-from agentic_discovery.materials.validation import (
-    FORBIDDEN_ATOMIC_NUMBERS,
-    MIN_DISTANCE_COVALENT_RATIO,
-    ValidationResult,
-    validate_allowed_elements,
-    validate_atom_count,
-    validate_coordination_sanity,
-    validate_interatomic_distances,
-    validate_lattice_sanity,
-    validate_structure_parseable,
+from discovery_workbench.materials.validation import (
+    WARNING_EXTREME_COORDINATION,
+    WARNING_LOW_DIMENSIONALITY,
+    WARNING_SHORT_DISTANCE,
+    validate_structure,
 )
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Valid-pass tests — is_valid must be True
 # ---------------------------------------------------------------------------
 
-def _cubic_si() -> Structure:
-    """Standard cubic Si — the canonical 'good' structure for tests."""
-    return Structure(
-        Lattice.cubic(5.43),
-        ["Si", "Si"],
-        [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]],
+
+def test_valid_nacl_rocksalt_passes():
+    """NaCl rocksalt conventional cell: 8 atoms, cubic, common elements."""
+    nacl = Structure(
+        Lattice.cubic(5.64),
+        ["Na"] * 4 + ["Cl"] * 4,
+        [
+            # Na sublattice (FCC positions)
+            [0.0, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5],
+            # Cl sublattice (offset FCC)
+            [0.5, 0.0, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.0, 0.0, 0.5],
+            [0.5, 0.5, 0.5],
+        ],
     )
+    result = validate_structure(nacl)
+    assert result.is_valid is True
+    assert result.rejection_reason is None
 
 
-def _make_structure_with_matrix(matrix: list[list[float]]) -> Structure:
-    """Build a Structure from a raw 3×3 lattice matrix with a dummy atom."""
-    lattice = Lattice(matrix)
-    return Structure(lattice, ["H"], [[0.0, 0.0, 0.0]])
+def test_valid_lifepo4_olivine_passes():
+    """Olivine-type structure with Li, Fe, P, O in orthorhombic cell."""
+    # Simplified olivine-like arrangement — 8 atoms in an orthorhombic cell
+    # with realistic lattice parameters.  Positions are spaced to avoid
+    # distance violations while keeping a 3D bonded network.
+    olivine = Structure(
+        Lattice.orthorhombic(10.33, 6.01, 4.69),
+        ["Li", "Fe", "P", "O", "O", "O", "O", "Fe"],
+        [
+            [0.00, 0.00, 0.00],
+            [0.28, 0.25, 0.50],
+            [0.60, 0.75, 0.00],
+            [0.40, 0.25, 0.25],
+            [0.10, 0.75, 0.75],
+            [0.80, 0.50, 0.25],
+            [0.60, 0.00, 0.75],
+            [0.72, 0.25, 0.50],
+        ],
+    )
+    result = validate_structure(olivine)
+    assert result.is_valid is True
+    assert result.rejection_reason is None
 
 
-# ---------------------------------------------------------------------------
-# ValidationResult dataclass
-# ---------------------------------------------------------------------------
-
-class TestValidationResult:
-    def test_frozen(self):
-        r = ValidationResult(passed=True, stage="x", message="", severity="hard")
-        with pytest.raises(AttributeError) as exc_info:
-            r.passed = False  # type: ignore[misc]
-        assert "passed" in str(exc_info.value) or "cannot assign" in str(exc_info.value).lower() or exc_info.type is AttributeError
-        assert r.passed is True  # original value unchanged
-
-    def test_invalid_severity_rejected(self):
-        with pytest.raises(ValueError, match="severity must be one of") as exc_info:
-            ValidationResult(passed=True, stage="x", message="", severity="critical")  # type: ignore[arg-type]
-        assert "critical" in str(exc_info.value)
-
-    def test_both_allowed_severities(self):
-        for sev in ("hard", "soft"):
-            r = ValidationResult(passed=True, stage="s", message="", severity=sev)  # type: ignore[arg-type]
-            assert r.severity == sev
-
-
-# ---------------------------------------------------------------------------
-# validate_structure_parseable — 5 tests
-# ---------------------------------------------------------------------------
-
-class TestParseStage:
-    def test_parse_valid_structure(self):
-        """Round-tripping a valid Si structure through as_dict → from_dict succeeds."""
-        si = _cubic_si()
-        result = validate_structure_parseable(si.as_dict())
-        assert result.passed is True
-        assert result.stage == "parse"
-        assert result.severity == "hard"
-
-    def test_parse_missing_lattice_fails(self):
-        """Dict with no lattice key cannot be parsed."""
-        d = _cubic_si().as_dict()
-        del d["lattice"]
-        result = validate_structure_parseable(d)
-        assert result.passed is False
-        assert result.stage == "parse"
-        assert "parse" in result.message.lower() or len(result.message) > 0
-
-    def test_parse_missing_species_fails(self):
-        """Dict with no species/sites info cannot be parsed."""
-        d = _cubic_si().as_dict()
-        # pymatgen stores species inside each site entry
-        d["sites"] = []
-        result = validate_structure_parseable(d)
-        # Empty sites list may raise or produce a degenerate structure;
-        # pymatgen ≥2024 raises ValueError for zero-site structures.
-        # Either way the result should reflect the problem.
-        assert result.passed is False or len(d["sites"]) == 0
-
-    def test_parse_wrong_type_fails(self):
-        """Passing a non-dict-like value where lattice matrix is expected."""
-        d = _cubic_si().as_dict()
-        d["lattice"]["matrix"] = "not-a-matrix"
-        result = validate_structure_parseable(d)
-        assert result.passed is False
-        assert result.stage == "parse"
-
-    def test_parse_empty_dict_fails(self):
-        """Completely empty dict has no recoverable structure info."""
-        result = validate_structure_parseable({})
-        assert result.passed is False
-        assert result.stage == "parse"
-        assert result.severity == "hard"
+def test_valid_bcc_iron_passes():
+    """BCC iron: 2 atoms, cubic, single element — minimal valid structure."""
+    bcc_fe = Structure(
+        Lattice.cubic(2.87),
+        ["Fe", "Fe"],
+        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+    )
+    result = validate_structure(bcc_fe)
+    assert result.is_valid is True
+    assert result.rejection_reason is None
 
 
 # ---------------------------------------------------------------------------
-# validate_lattice_sanity — 6 tests
+# Reject tests — is_valid must be False with an informative rejection_reason
 # ---------------------------------------------------------------------------
 
-class TestLatticeSanity:
-    def test_lattice_valid_cubic(self):
-        """Standard cubic Si passes lattice sanity."""
-        si = _cubic_si()
-        result = validate_lattice_sanity(si)
-        assert result.passed is True
-        assert result.stage == "lattice_sanity"
-        assert result.severity == "hard"
 
-    def test_lattice_nan_in_matrix_fails(self):
-        """NaN in any matrix entry is detected."""
-        s = _make_structure_with_matrix([
-            [float("nan"), 0.0, 0.0],
-            [0.0, 5.0, 0.0],
-            [0.0, 0.0, 5.0],
-        ])
-        result = validate_lattice_sanity(s)
-        assert result.passed is False
-        assert "NaN" in result.message or "nan" in result.message.lower()
+def test_reject_excluded_element_technetium():
+    """Tc (Z=43) has no stable isotopes — must be rejected at the element stage."""
+    tc_struct = Structure(
+        Lattice.cubic(5.0),
+        ["Tc", "Tc"],
+        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+    )
+    result = validate_structure(tc_struct)
+    assert result.is_valid is False
+    assert result.rejection_reason is not None
+    assert "Tc" in result.rejection_reason
 
-    def test_lattice_inf_in_matrix_fails(self):
-        """Inf in any matrix entry is detected."""
-        s = _make_structure_with_matrix([
-            [float("inf"), 0.0, 0.0],
-            [0.0, 5.0, 0.0],
-            [0.0, 0.0, 5.0],
-        ])
-        result = validate_lattice_sanity(s)
-        assert result.passed is False
-        assert "Inf" in result.message or "inf" in result.message.lower()
 
-    def test_lattice_zero_volume_fails(self):
-        """Singular matrix (zero determinant) → non-positive determinant failure."""
-        # Two identical rows make the matrix singular (det = 0).
-        s = _make_structure_with_matrix([
-            [5.0, 0.0, 0.0],
-            [5.0, 0.0, 0.0],
-            [0.0, 0.0, 5.0],
-        ])
-        result = validate_lattice_sanity(s)
-        assert result.passed is False
-        assert result.stage == "lattice_sanity"
+def test_reject_atom_count_exceeds_limit():
+    """25 atoms exceeds the 20-atom cap — must be rejected at atom-count stage."""
+    n = 25
+    # Spread atoms in a large cell so distance checks would not be the
+    # cause of failure — atom count is checked first anyway.
+    coords = [[i / n, 0.0, 0.0] for i in range(n)]
+    big = Structure(Lattice.cubic(50.0), ["Si"] * n, coords)
+    result = validate_structure(big)
+    assert result.is_valid is False
+    assert result.rejection_reason is not None
+    assert "25" in result.rejection_reason or "20" in result.rejection_reason
 
-    def test_lattice_near_singular_fails(self):
-        """Lattice with volume far below the minimum threshold fails."""
-        # Tiny c-axis → volume ≈ 5 * 5 * 1e-6 = 2.5e-5 Å³ < 0.1
-        s = _make_structure_with_matrix([
-            [5.0, 0.0, 0.0],
-            [0.0, 5.0, 0.0],
-            [0.0, 0.0, 1e-6],
-        ])
-        result = validate_lattice_sanity(s)
-        assert result.passed is False
-        assert "volume" in result.message.lower() or "determinant" in result.message.lower()
 
-    def test_lattice_negative_determinant_fails(self):
-        """Left-handed lattice (negative determinant) is rejected."""
-        # Swapping two rows of a right-handed basis flips the determinant sign.
-        s = _make_structure_with_matrix([
-            [0.0, 5.0, 0.0],
-            [5.0, 0.0, 0.0],
-            [0.0, 0.0, 5.0],
-        ])
-        result = validate_lattice_sanity(s)
-        assert result.passed is False
-        assert "determinant" in result.message.lower() or "non-positive" in result.message.lower()
+def test_reject_noble_gas_element():
+    """Ne (Z=10) is a noble gas — chemically inert, must be rejected."""
+    ne_struct = Structure(
+        Lattice.cubic(5.0),
+        ["Ne", "Ne"],
+        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+    )
+    result = validate_structure(ne_struct)
+    assert result.is_valid is False
+    assert result.rejection_reason is not None
+    assert "Ne" in result.rejection_reason
 
 
 # ---------------------------------------------------------------------------
-# FORBIDDEN_ATOMIC_NUMBERS constant — 2 tests
+# Flag tests — is_valid is True but specific warnings are present.
+# These are the risky tests: synthetic structures must pass all hard checks
+# yet reliably trigger exactly one soft-check category.
 # ---------------------------------------------------------------------------
 
-class TestForbiddenAtomicNumbers:
-    def test_cardinality(self):
-        """The set should contain exactly the union of noble gases, Tc, Pm, and Z>=84."""
-        noble = {2, 10, 18, 36, 54, 86}
-        radioactive_orphans = {43, 61}
-        high_z = set(range(84, 119))
-        expected = noble | radioactive_orphans | high_z
-        assert FORBIDDEN_ATOMIC_NUMBERS == expected
-        assert len(FORBIDDEN_ATOMIC_NUMBERS) == 42
 
-    def test_is_frozenset(self):
-        assert isinstance(FORBIDDEN_ATOMIC_NUMBERS, frozenset)
-        assert 43 in FORBIDDEN_ATOMIC_NUMBERS  # Tc must be present
+def test_flag_short_interatomic_distance():
+    """Two Si atoms 0.4 Å apart — well below 0.5× summed covalent radii.
 
-
-# ---------------------------------------------------------------------------
-# validate_allowed_elements — 6 tests (boundary correctness is critical)
-# ---------------------------------------------------------------------------
-
-def _simple_structure(*symbols: str) -> Structure:
-    """Build a minimal cubic structure from element symbols."""
-    coords = [[i * 0.2, 0.0, 0.0] for i in range(len(symbols))]
-    return Structure(Lattice.cubic(10.0), list(symbols), coords)
+    Si covalent radius ≈ 1.11 Å → threshold = 0.5 × 2.22 = 1.11 Å.
+    0.4 Å < 1.11 Å triggers the distance warning.  Hard checks still
+    pass because Si is allowed and 2 atoms ≤ 20.
+    """
+    # 0.4 Å separation in a 10 Å cubic cell = fractional offset of 0.04
+    short_distance = Structure(
+        Lattice.cubic(10.0),
+        ["Si", "Si"],
+        [[0.0, 0.0, 0.0], [0.04, 0.0, 0.0]],
+    )
+    result = validate_structure(short_distance)
+    assert result.is_valid is True
+    assert WARNING_SHORT_DISTANCE in result.warnings
 
 
-class TestAllowedElements:
-    def test_elements_valid_common_elements(self):
-        """H, C, N, O, Fe, Bi (Z=83) are all allowed."""
-        s = _simple_structure("H", "C", "N", "O", "Fe", "Bi")
-        result = validate_allowed_elements(s)
-        assert result.passed is True
-        assert result.stage == "allowed_elements"
-        assert result.severity == "hard"
+def test_flag_extreme_coordination_number():
+    """Single Fe atom in a 50 Å cell — CrystalNN sees no neighbours (CN=0).
 
-    def test_elements_technetium_rejected(self):
-        """Tc (Z=43) has no stable isotopes — must be forbidden."""
-        s = _simple_structure("Tc")
-        result = validate_allowed_elements(s)
-        assert result.passed is False
-        assert "Tc" in result.message
-
-    def test_elements_promethium_rejected(self):
-        """Pm (Z=61) has no stable isotopes — must be forbidden."""
-        s = _simple_structure("Pm")
-        result = validate_allowed_elements(s)
-        assert result.passed is False
-        assert "Pm" in result.message
-
-    def test_elements_noble_gas_rejected(self):
-        """All six noble gases (He, Ne, Ar, Kr, Xe, Rn) must be forbidden."""
-        for sym in ("He", "Ne", "Ar", "Kr", "Xe", "Rn"):
-            s = _simple_structure(sym)
-            result = validate_allowed_elements(s)
-            assert result.passed is False, f"{sym} should be forbidden"
-            assert sym in result.message
-
-    def test_elements_z_above_83_rejected(self):
-        """Spot-check several elements with Z >= 84."""
-        for sym in ("Po", "At", "Ra", "Th", "U", "Pu", "Og"):
-            s = _simple_structure(sym)
-            result = validate_allowed_elements(s)
-            assert result.passed is False, f"{sym} should be forbidden"
-
-    def test_elements_boundary_z83_bismuth_allowed(self):
-        """Bi (Z=83) is the heaviest allowed element — boundary check."""
-        s = _simple_structure("Bi")
-        result = validate_allowed_elements(s)
-        assert result.passed is True
+    One atom passes all hard checks (Fe allowed, 1 ≤ 20, lattice fine).
+    CrystalNN cannot find any coordinated neighbours at this distance,
+    producing a CN=0 anomaly that triggers the coordination warning.
+    """
+    isolated = Structure(
+        Lattice.cubic(50.0),
+        ["Fe"],
+        [[0.0, 0.0, 0.0]],
+    )
+    result = validate_structure(isolated)
+    assert result.is_valid is True
+    assert WARNING_EXTREME_COORDINATION in result.warnings
 
 
-# ---------------------------------------------------------------------------
-# validate_atom_count — 6 tests
-# ---------------------------------------------------------------------------
+def test_flag_2d_layered_in_3d_cell():
+    """Two C atoms in the z=0 plane with a 25 Å c-axis — effectively 2D.
 
-class TestAtomCount:
-    def test_atom_count_valid(self):
-        """Standard 2-atom Si cell passes."""
-        si = _cubic_si()
-        result = validate_atom_count(si)
-        assert result.passed is True
-        assert result.stage == "atom_count"
-        assert result.severity == "hard"
-
-    def test_atom_count_exactly_1_passes(self):
-        """A single-atom structure is within the allowed range."""
-        s = Structure(Lattice.cubic(4.0), ["Fe"], [[0, 0, 0]])
-        result = validate_atom_count(s)
-        assert result.passed is True
-
-    def test_atom_count_exactly_20_passes(self):
-        """20 atoms is the upper boundary — must pass."""
-        coords = [[i * 0.05, 0.0, 0.0] for i in range(20)]
-        s = Structure(Lattice.cubic(20.0), ["Si"] * 20, coords)
-        result = validate_atom_count(s)
-        assert result.passed is True
-
-    def test_atom_count_exceeds_20_fails(self):
-        """21 atoms exceeds the limit."""
-        coords = [[i * 0.045, 0.0, 0.0] for i in range(21)]
-        s = Structure(Lattice.cubic(20.0), ["Si"] * 21, coords)
-        result = validate_atom_count(s)
-        assert result.passed is False
-        assert "21" in result.message
-        assert result.stage == "atom_count"
-
-    def test_atom_count_large_structure_fails(self):
-        """50 atoms is well above the limit."""
-        coords = [[i * 0.02, 0.0, 0.0] for i in range(50)]
-        s = Structure(Lattice.cubic(30.0), ["C"] * 50, coords)
-        result = validate_atom_count(s)
-        assert result.passed is False
-        assert "50" in result.message
-
-    def test_atom_count_message_includes_maximum(self):
-        """Failure message should mention the maximum for actionable feedback."""
-        coords = [[i * 0.045, 0.0, 0.0] for i in range(25)]
-        s = Structure(Lattice.cubic(20.0), ["O"] * 25, coords)
-        result = validate_atom_count(s)
-        assert result.passed is False
-        assert "20" in result.message
-
-
-# ---------------------------------------------------------------------------
-# validate_interatomic_distances — 6 tests (PBC + threshold edge cases)
-# ---------------------------------------------------------------------------
-
-class TestInteratomicDistances:
-    def test_distance_valid_si_diamond(self):
-        """Diamond-cubic Si (nearest-neighbour ≈2.35 Å) passes easily."""
-        si = _cubic_si()
-        result = validate_interatomic_distances(si)
-        assert result.passed is True
-        assert result.stage == "interatomic_distances"
-        assert result.severity == "hard"
-
-    def test_distance_overlapping_atoms_fails(self):
-        """Two atoms at the same fractional position (distance ≈ 0) must fail."""
-        s = Structure(
-            Lattice.cubic(5.0),
-            ["Si", "Si"],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-        )
-        result = validate_interatomic_distances(s)
-        assert result.passed is False
-        assert result.stage == "interatomic_distances"
-        assert "Si" in result.message
-
-    def test_distance_barely_below_threshold_fails(self):
-        """Place two Si atoms just below 0.5 * (r_Si + r_Si) apart.
-
-        Si covalent radius ≈ 1.11 Å → threshold = 0.5 * 2.22 = 1.11 Å.
-        Put atoms 1.10 Å apart (below threshold) → must fail.
-        """
-        from pymatgen.core import Element
-
-        r_si = float(Element("Si").atomic_radius)
-        threshold = MIN_DISTANCE_COVALENT_RATIO * 2 * r_si
-        gap = threshold - 0.01  # just below
-
-        # Place second atom at (gap, 0, 0) in Cartesian → fractional = (gap/20, 0, 0)
-        s = Structure(
-            Lattice.cubic(20.0),
-            ["Si", "Si"],
-            [[0.0, 0.0, 0.0], [gap / 20.0, 0.0, 0.0]],
-        )
-        result = validate_interatomic_distances(s)
-        assert result.passed is False
-        assert result.severity == "hard"
-
-    def test_distance_exactly_at_threshold_passes(self):
-        """Atoms separated by exactly the threshold distance should pass.
-
-        The check is strict-less-than (d < threshold), so d == threshold passes.
-        """
-        from pymatgen.core import Element
-
-        r_si = float(Element("Si").atomic_radius)
-        threshold = MIN_DISTANCE_COVALENT_RATIO * 2 * r_si
-
-        s = Structure(
-            Lattice.cubic(20.0),
-            ["Si", "Si"],
-            [[0.0, 0.0, 0.0], [threshold / 20.0, 0.0, 0.0]],
-        )
-        result = validate_interatomic_distances(s)
-        assert result.passed is True
-
-    def test_distance_uses_periodic_boundaries(self):
-        """Two atoms far apart in fractional coords but close across the PBC.
-
-        In a 4 Å cubic cell, atoms at (0, 0, 0) and (0.95, 0, 0) are only
-        0.2 Å apart through the periodic boundary (4 - 3.8 = 0.2 Å).
-        That is well below any covalent-radius threshold → must fail.
-        """
-        s = Structure(
-            Lattice.cubic(4.0),
-            ["Si", "Si"],
-            [[0.0, 0.0, 0.0], [0.95, 0.0, 0.0]],
-        )
-        result = validate_interatomic_distances(s)
-        assert result.passed is False, (
-            "PBC should make these atoms ~0.2 Å apart, well below threshold"
-        )
-
-    def test_distance_different_element_pairs(self):
-        """Mixed elements use per-element covalent radii, not a single global value.
-
-        Fe (r_cov ≈ 1.25 Å) + O (r_cov ≈ 0.66 Å) → threshold ≈ 0.955 Å.
-        Place them 0.90 Å apart — must fail.  Then verify the message names
-        both elements.
-        """
-        from pymatgen.core import Element
-
-        r_fe = float(Element("Fe").atomic_radius)
-        r_o = float(Element("O").atomic_radius)
-        threshold = MIN_DISTANCE_COVALENT_RATIO * (r_fe + r_o)
-        gap = threshold - 0.05
-
-        s = Structure(
-            Lattice.cubic(20.0),
-            ["Fe", "O"],
-            [[0.0, 0.0, 0.0], [gap / 20.0, 0.0, 0.0]],
-        )
-        result = validate_interatomic_distances(s)
-        assert result.passed is False
-        assert "Fe" in result.message
-        assert "O" in result.message
-
-
-# ---------------------------------------------------------------------------
-# validate_coordination_sanity — 3 tests (soft flag, lower risk)
-# ---------------------------------------------------------------------------
-
-class TestCoordinationSanity:
-    def test_coordination_valid_structure(self):
-        """Diamond-cubic Si has CN=4 for both sites — should pass."""
-        si = _cubic_si()
-        result = validate_coordination_sanity(si)
-        assert result.passed is True
-        assert result.stage == "coordination_sanity"
-        assert result.severity == "soft"
-
-    def test_coordination_isolated_atom_flags(self):
-        """A single atom in a huge cell has CN=0 — soft flag expected."""
-        s = Structure(Lattice.cubic(50.0), ["He"], [[0.0, 0.0, 0.0]])
-        result = validate_coordination_sanity(s)
-        assert result.passed is False
-        assert "isolated" in result.message.lower() or "CN=0" in result.message
-
-    def test_coordination_severity_is_soft(self):
-        """Coordination check must always use soft severity, never hard."""
-        si = _cubic_si()
-        result = validate_coordination_sanity(si)
-        assert result.severity == "soft"
+    In-plane bonds form through periodic images of the 3 Å a/b axes,
+    but the 25 Å c-axis gap has no bonding across it.  Larsen's method
+    classifies this as 2D (layered), triggering the dimensionality warning.
+    Hard checks pass: C is allowed, 2 atoms ≤ 20, no distance violation
+    (nearest C–C ≈ 2.12 Å, threshold ≈ 0.77 Å).
+    """
+    layered = Structure(
+        Lattice([[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 25.0]]),
+        ["C", "C"],
+        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.0]],
+    )
+    result = validate_structure(layered)
+    assert result.is_valid is True
+    assert WARNING_LOW_DIMENSIONALITY in result.warnings
