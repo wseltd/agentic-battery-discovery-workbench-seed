@@ -106,8 +106,9 @@ class TestGetReducedFormula:
         """An empty structure (zero sites) must raise ValueError."""
         lattice = Lattice.cubic(5.0)
         empty = Structure(lattice, [], [])
-        with pytest.raises(ValueError, match="empty structure"):
+        with pytest.raises(ValueError, match="empty structure") as exc_info:
             get_reduced_formula(empty)
+        assert "empty structure" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -135,13 +136,15 @@ class TestBuildCompositionFilter:
 
     def test_empty_string_raises(self) -> None:
         """Empty formula string must raise ValueError."""
-        with pytest.raises(ValueError, match="non-empty string"):
+        with pytest.raises(ValueError, match="non-empty string") as exc_info:
             build_composition_filter("")
+        assert "non-empty string" in str(exc_info.value)
 
     def test_none_raises(self) -> None:
         """None input must raise ValueError, not AttributeError."""
-        with pytest.raises(ValueError, match="non-empty string"):
+        with pytest.raises(ValueError, match="non-empty string") as exc_info:
             build_composition_filter(None)  # type: ignore[arg-type]
+        assert "non-empty string" in str(exc_info.value)
 
     def test_roundtrip_with_get_reduced_formula(self) -> None:
         """Filter built from a structure's formula should contain that formula."""
@@ -217,8 +220,9 @@ class TestGroupByComposition:
         """A structure with no sites in the list must raise ValueError."""
         good = _nacl_rocksalt()
         empty = Structure(Lattice.cubic(5.0), [], [])
-        with pytest.raises(ValueError, match="index 1"):
+        with pytest.raises(ValueError, match="index 1") as exc_info:
             group_structures_by_composition([good, empty])
+        assert "index 1" in str(exc_info.value)
 
     def test_return_type_is_plain_dict(self) -> None:
         """Return value should be a plain dict, not defaultdict.
