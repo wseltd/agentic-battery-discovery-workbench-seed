@@ -86,10 +86,11 @@ def _make_annex_input(
 # ---------------------------------------------------------------------------
 
 def test_build_annex_returns_materials_annex():
-    """build_materials_annex must return a MaterialsAnnex instance."""
+    """build_materials_annex must return a MaterialsAnnex with correct relaxer version."""
     annex_input = _make_annex_input()
     result = build_materials_annex(annex_input)
     assert isinstance(result, MaterialsAnnex)
+    assert result.relaxer_section["version"] == "mattersim-0.3.1"
 
 
 def test_generator_section_contains_checkpoint():
