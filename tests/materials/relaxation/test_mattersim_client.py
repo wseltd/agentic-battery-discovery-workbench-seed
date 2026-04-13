@@ -215,8 +215,9 @@ def test_relax_negative_inf_energy_raises_valueerror() -> None:
     struct = _nacl_structure()
     mocks = _build_mock_modules(energy=float("-inf"))
     relaxer = MatterSimRelaxer()
-    with pytest.raises(ValueError, match="Inf"):
+    with pytest.raises(ValueError, match="Inf") as exc_info:
         _relax_with_mocks(relaxer, struct, mocks)
+    assert "numerical instability" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
