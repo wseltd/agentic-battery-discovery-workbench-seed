@@ -203,6 +203,9 @@ def test_dft_conversion_always_none() -> None:
     result = compute_materials_benchmark(candidates)
 
     assert result.dft_conversion_rate is None
+    # Verify other metrics computed correctly alongside the None rate
+    assert result.validity_pct == 0.5
+    assert result.novelty_pct == 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +245,7 @@ def test_clamping_values_above_one() -> None:
 
 
 def test_clamping_skips_none_dft_rate() -> None:
-    """dft_conversion_rate=None is not clamped."""
+    """dft_conversion_rate=None is not clamped; float fields keep their values."""
     report = MaterialsBenchmarkReport(
         validity_pct=0.5,
         uniqueness_pct=0.5,
@@ -253,3 +256,6 @@ def test_clamping_skips_none_dft_rate() -> None:
         dft_conversion_rate=None,
     )
     assert report.dft_conversion_rate is None
+    # Float fields survive clamping unchanged when already in [0, 1]
+    assert report.validity_pct == 0.5
+    assert report.shortlist_usefulness == 0.5
