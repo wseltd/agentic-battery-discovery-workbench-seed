@@ -178,8 +178,9 @@ class TestTargetSatisfaction:
 
     def test_target_satisfaction_unknown_property_raises(self) -> None:
         """Requesting an unsupported property raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown property"):
+        with pytest.raises(ValueError, match="Unknown property") as exc_info:
             compute_target_satisfaction(["CCO"], {"bogus_property": 1.0})
+        assert "bogus_property" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -361,5 +362,7 @@ class TestBenchmarksEndToEnd:
         """MolecularBenchmarkResult is immutable."""
         result = compute_molecular_benchmarks(["CCO"], set(), {})
         assert isinstance(result, MolecularBenchmarkResult)
+        assert result.total_generated == 1
+        assert result.valid_count == 1
         with pytest.raises(AttributeError):
             result.total_generated = 999  # type: ignore[misc]
