@@ -1,10 +1,16 @@
 """Orchestration loop public API.
 
 Re-exports the core loop controller, pipeline protocol, result types,
-and cycle-level utilities for iterative discovery workflows.
+cycle-level utilities, and early-stop evaluation for iterative discovery
+workflows.
 """
 
 from agentic_workbench.orchestration.dedup import deduplicate_across_cycles
+from agentic_workbench.orchestration.early_stop import (
+    CycleStats,
+    StopDecision,
+    evaluate_stop,
+)
 from discovery_workbench.shared.agent_loop import (
     AgentLoopController,
     CycleResult,
@@ -16,8 +22,11 @@ from discovery_workbench.shared.agent_loop import (
 __all__ = [
     "AgentLoopController",
     "CycleResult",
+    "CycleStats",
     "DiscoveryPipeline",
     "LoopResult",
+    "StopDecision",
     "assemble_shortlist",
     "deduplicate_across_cycles",
+    "evaluate_stop",
 ]
