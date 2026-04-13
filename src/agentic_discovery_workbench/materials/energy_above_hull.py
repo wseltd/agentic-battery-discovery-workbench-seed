@@ -25,7 +25,13 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from pymatgen.analysis.phase_diagram import PDEntry, PhaseDiagram
-from pymatgen.core import Composition
+from pymatgen.core import Composition, Structure
+
+from agentic_discovery_workbench.materials.competing_phases import fetch_competing_phases
+from agentic_discovery_workbench.materials.energy_correction import (
+    apply_mp2020_correction,
+    build_candidate_entry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,18 +129,14 @@ class PhaseEntryProvider(Protocol):
 class EnergyAboveHullCalculator:
     """Compute energy above convex hull for ML-relaxed structures.
 
-    Wraps pymatgen PhaseDiagram to compute hull distances for candidate
-    structures against reference phases from an external database.  Reference
-    entries are cached by chemical system to avoid redundant API calls when
-    processing multiple candidates in the same system.
-
-    The client must implement two methods:
-        get_entries(chemical_system: str) -> list[PDEntry]
-        has_corrections() -> bool
+    Offers two modes: compute() delegates phase lookup to a client
+    protocol, calculate() orchestrates MP2020 correction and competing
+    phase fetching internally via mp_api_key.
 
     Args:
-        client: Reference phase data provider.
+        client: Reference phase data provider for compute().
         stability_threshold_ev: eV/atom threshold for stability classification.
+        mp_api_key: Materials Project API key for calculate().
 
     Raises:
         ValueError: If stability_threshold_ev is negative.
@@ -142,8 +144,9 @@ class EnergyAboveHullCalculator:
 
     def __init__(
         self,
-        client: PhaseEntryProvider,
+        client: PhaseEntryProvider | None = None,
         stability_threshold_ev: float = STABILITY_THRESHOLD,
+        mp_api_key: str | None = None,
     ) -> None:
         if stability_threshold_ev < 0:
             raise ValueError(
@@ -152,6 +155,7 @@ class EnergyAboveHullCalculator:
             )
         self._client = client
         self._threshold = stability_threshold_ev
+        self._mp_api_key = mp_api_key
         self._system_cache: dict[str, list[PDEntry]] = {}
 
     def compute(
@@ -174,6 +178,12 @@ class EnergyAboveHullCalculator:
             ValueError: If composition cannot be parsed.
             ConnectionError: If the phase entry client fails (not silenced).
         """
+        if self._client is None:
+            raise ValueError(
+                "compute() requires a client; pass client= to __init__ "
+                "or use calculate() with mp_api_key instead"
+            )
+
         logger.info(
             "Computing energy above hull structure_id=%s composition=%s",
             structure_id,
@@ -221,6 +231,71 @@ class EnergyAboveHullCalculator:
             caveats=caveats,
         )
 
+    def calculate(
+        self,
+        structure: Structure,
+        energy_per_atom: float,
+        structure_id: str,
+    ) -> HullEnergyResult:
+        """Compute energy above hull by orchestrating correction, phase fetch, and hull construction.
+
+        Unlike compute(), this method handles the full pipeline: applies
+        MP2020 energy corrections, fetches competing phases from Materials
+        Project, builds the candidate entry, and constructs the phase
+        diagram internally.
+
+        Args:
+            structure: ML-relaxed crystal structure.
+            energy_per_atom: ML-predicted energy per atom in eV.
+            structure_id: Identifier for the structure.
+
+        Returns:
+            HullEnergyResult with hull distance and stability classification.
+
+        Raises:
+            ValueError: If PhaseDiagram returns None for the candidate.
+            ConnectionError: If the Materials Project API call fails.
+            ImportError: If mp_api is not installed.
+        """
+        logger.info(
+            "Calculating energy above hull structure_id=%s formula=%s",
+            structure_id,
+            structure.composition.reduced_formula,
+        )
+
+        corrected_energy, caveats = apply_mp2020_correction(
+            structure, energy_per_atom
+        )
+
+        chemical_system = structure.composition.chemical_system
+        competing_entries = fetch_competing_phases(
+            chemical_system, mp_api_key=self._mp_api_key
+        )
+
+        candidate = build_candidate_entry(structure, corrected_energy)
+
+        all_entries = list(competing_entries) + [candidate]
+        phase_diagram = PhaseDiagram(all_entries)
+
+        raw_e_above_hull = phase_diagram.get_e_above_hull(candidate)
+        if raw_e_above_hull is None:
+            raise ValueError(
+                f"PhaseDiagram returned None for structure_id={structure_id}"
+            )
+        e_above_hull = float(raw_e_above_hull)
+        is_stable = bool(e_above_hull <= self._threshold)
+
+        return HullEnergyResult(
+            structure_id=structure_id,
+            energy_per_atom_ev=energy_per_atom,
+            energy_above_hull_ev_per_atom=e_above_hull,
+            is_stable_proxy=is_stable,
+            stability_threshold_ev=self._threshold,
+            reference_phase_count=len(competing_entries),
+            chemical_system=chemical_system,
+            caveats=caveats,
+        )
+
     def _get_reference_entries(
         self, chemical_system: str
     ) -> list[PDEntry]:
@@ -234,6 +309,11 @@ class EnergyAboveHullCalculator:
         """
         if chemical_system in self._system_cache:
             return self._system_cache[chemical_system]
+
+        # _get_reference_entries is only called from compute(), which
+        # validates self._client is not None before reaching here.
+        if self._client is None:
+            raise ValueError("No client configured")
 
         entries = self._client.get_entries(chemical_system)
         self._system_cache[chemical_system] = entries
