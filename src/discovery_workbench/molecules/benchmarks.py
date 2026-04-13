@@ -15,6 +15,8 @@ import types
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from rdkit import Chem, RDConfig
 from rdkit.Chem import Descriptors, QED, DataStructs, rdFingerprintGenerator
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
@@ -320,6 +322,10 @@ def compute_internal_diversity(
     Diversity for a pair is 1 − Tanimoto(fp_i, fp_j).  With fewer
     than two molecules there are no pairs, so (0.0, 0.0) is returned.
 
+    Uses vectorised numpy operations on the full bit-vector matrix
+    (upper triangle only) rather than per-pair RDKit calls, so it
+    scales to ~500 molecules without excessive runtime.
+
     Args:
         smiles: Canonical SMILES to compare.
 
@@ -337,16 +343,32 @@ def compute_internal_diversity(
     if len(fps) <= 1:
         return 0.0, 0.0
 
-    diversities: list[float] = []
-    for i in range(1, len(fps)):
-        sims = DataStructs.BulkTanimotoSimilarity(fps[i], fps[:i])
-        diversities.extend(1.0 - s for s in sims)
+    # Convert RDKit bit vectors to a numpy bool matrix (n x MORGAN_NBITS).
+    n = len(fps)
+    bit_matrix = np.zeros((n, MORGAN_NBITS), dtype=np.float64)
+    for i, fp in enumerate(fps):
+        DataStructs.ConvertToNumpyArray(fp, bit_matrix[i])
 
-    if not diversities:
-        return 0.0, 0.0
+    # Vectorised Tanimoto: T(a,b) = dot(a,b) / (|a| + |b| - dot(a,b))
+    # where |a| = sum of bits in a.
+    bit_counts = bit_matrix.sum(axis=1)  # shape (n,)
+    dot_products = bit_matrix @ bit_matrix.T  # shape (n, n)
 
-    mean_d = statistics.mean(diversities)
-    std_d = statistics.pstdev(diversities)
+    # Denominator: |a| + |b| - dot(a,b) for each pair
+    union_counts = bit_counts[:, np.newaxis] + bit_counts[np.newaxis, :] - dot_products
+
+    # Upper triangle indices (excluding diagonal) — each pair counted once
+    tri_row, tri_col = np.triu_indices(n, k=1)
+    dot_upper = dot_products[tri_row, tri_col]
+    union_upper = union_counts[tri_row, tri_col]
+
+    # Tanimoto similarity; guard against zero union (two all-zero fingerprints)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tanimoto = np.where(union_upper > 0, dot_upper / union_upper, 0.0)
+
+    distances = 1.0 - tanimoto
+    mean_d = float(distances.mean())
+    std_d = float(distances.std(ddof=0))  # population std
     return mean_d, std_d
 
 
