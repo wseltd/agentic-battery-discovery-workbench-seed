@@ -7,6 +7,11 @@ workflows.
 
 from agentic_workbench.orchestration.dedup import deduplicate_across_cycles
 from agentic_workbench.orchestration.early_stop import (
+    DUPLICATE_THRESHOLD,
+    INVALIDITY_THRESHOLD,
+    INVALIDITY_WINDOW,
+    PLATEAU_THRESHOLD,
+    PLATEAU_WINDOW,
     CycleStats,
     StopDecision,
     evaluate_stop,
@@ -23,8 +28,13 @@ __all__ = [
     "AgentLoopController",
     "CycleResult",
     "CycleStats",
+    "DUPLICATE_THRESHOLD",
     "DiscoveryPipeline",
+    "INVALIDITY_THRESHOLD",
+    "INVALIDITY_WINDOW",
     "LoopResult",
+    "PLATEAU_THRESHOLD",
+    "PLATEAU_WINDOW",
     "StopDecision",
     "assemble_shortlist",
     "deduplicate_across_cycles",
