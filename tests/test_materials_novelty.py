@@ -122,10 +122,11 @@ def test_tolerance_boundary_stol_at_limit():
 
 
 def test_tolerance_boundary_stol_beyond_limit():
-    """Same displacement exceeds tight stol=0.001 — proves stol is not hardcoded.
+    """Same displacement matches at stol=0.3 but NOT at stol=0.001.
 
-    The 0.02 fractional Cl shift from the at-limit test is repeated here with
-    a stol so tight that any real displacement breaks the match.
+    The 0.02 fractional Cl shift from the at-limit test is repeated here.
+    Contrasting both tolerances proves stol is actually forwarded to the
+    matcher rather than hardcoded.
     """
     nacl = _make_nacl()
     perturbed = Structure(
@@ -133,10 +134,16 @@ def test_tolerance_boundary_stol_beyond_limit():
         ["Na", "Cl"],
         [[0.0, 0.0, 0.0], [0.52, 0.5, 0.5]],
     )
-    result = match_against_references(
+    # Displacement within default stol — should match
+    match_result = match_against_references(
+        nacl, [("ref-1", perturbed)], stol=0.3
+    )
+    assert match_result == "ref-1"
+    # Same displacement with tight stol — should NOT match
+    no_match_result = match_against_references(
         nacl, [("ref-1", perturbed)], stol=0.001
     )
-    assert result is None
+    assert no_match_result is None
 
 
 def test_tolerance_boundary_angle_tol():
