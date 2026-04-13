@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+__all__ = ["DimensionalityResult", "check_dimensionality"]
+
 from pymatgen.analysis.dimensionality import (
     get_dimensionality_larsen,
     get_structure_components,
