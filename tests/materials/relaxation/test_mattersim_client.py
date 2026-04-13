@@ -197,6 +197,28 @@ def test_relax_nan_energy_raises_valueerror() -> None:
     assert "numerical instability" in str(exc_info.value)
 
 
+def test_relax_inf_energy_raises_valueerror() -> None:
+    """Inf energy from the calculator must raise ValueError with composition in message."""
+    struct = _nacl_structure()
+    mocks = _build_mock_modules(energy=float("inf"))
+    relaxer = MatterSimRelaxer()
+    with pytest.raises(ValueError, match="Inf") as exc_info:
+        _relax_with_mocks(relaxer, struct, mocks)
+    msg = str(exc_info.value)
+    assert "numerical instability" in msg
+    # Error message must include the composition so the user knows which structure failed.
+    assert "NaCl" in msg
+
+
+def test_relax_negative_inf_energy_raises_valueerror() -> None:
+    """Negative Inf energy must also be caught — both signs are non-physical."""
+    struct = _nacl_structure()
+    mocks = _build_mock_modules(energy=float("-inf"))
+    relaxer = MatterSimRelaxer()
+    with pytest.raises(ValueError, match="Inf"):
+        _relax_with_mocks(relaxer, struct, mocks)
+
+
 # ---------------------------------------------------------------------------
 # Cell filter usage
 # ---------------------------------------------------------------------------

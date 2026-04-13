@@ -94,7 +94,7 @@ class MatterSimRelaxer:
             ImportError: If mattersim is not installed.
             TypeError: If *structure* is not a pymatgen Structure.
             ValueError: If fmax is not positive, max_steps < 1, or the
-                relaxed energy is NaN.
+                relaxed energy is NaN or Inf.
         """
         if not isinstance(structure, Structure):
             raise TypeError(
@@ -139,9 +139,10 @@ class MatterSimRelaxer:
         steps_taken = optimiser.get_number_of_steps()
 
         energy = atoms.get_potential_energy()
-        if math.isnan(energy):
+        if math.isnan(energy) or math.isinf(energy):
+            kind = "NaN" if math.isnan(energy) else "Inf"
             raise ValueError(
-                "Relaxed energy is NaN — MatterSim calculator failure or "
+                f"Relaxed energy is {kind} — MatterSim calculator failure or "
                 "numerical instability for "
                 f"{structure.composition.reduced_formula}"
             )
@@ -182,7 +183,7 @@ def relax(structure: Structure, **kwargs: float | int) -> RelaxationResult:
 
     Raises:
         ImportError: If mattersim is not installed.
-        ValueError: If relaxed energy is NaN.
+        ValueError: If relaxed energy is NaN or Inf.
     """
     relaxer = MatterSimRelaxer(**kwargs)  # type: ignore[arg-type]
     return relaxer.relax(structure)
