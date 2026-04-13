@@ -72,6 +72,8 @@ def test_graphite_layered_not_3d() -> None:
     result = check_dimensionality(_graphite_structure())
     assert result.is_3d is False
     assert result.dimensionality == 2
+    assert result.component_count >= 1
+    assert result.method == "larsen"
 
 
 # ---------------------------------------------------------------------------
