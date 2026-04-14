@@ -92,6 +92,6 @@ preservation-and-fork operation and is documented in
 ## Preservation Anchors
 
 - Git tag: `pre_split_dual_domain_snapshot`
-  (on the original repo at wseltd/Agentic-Molecular-and-Materials-Discovery-Workbench)
-- This clone: `/home/onur/projects/agentic-battery-discovery-workbench-seed`
-- Original repo: `/home/onur/projects/Agentic-Molecular-and-Materials-Discovery-Workbench`
+  (on the original repo at `wseltd/Agentic-Molecular-and-Materials-Discovery-Workbench`)
+- This seed: `wseltd/agentic-battery-discovery-workbench-seed`
+- Original repo: `wseltd/Agentic-Molecular-and-Materials-Discovery-Workbench`

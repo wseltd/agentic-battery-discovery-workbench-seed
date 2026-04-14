@@ -21,9 +21,7 @@ code inside this repo is **not** battery-specific. See
 │   ├── agentic_molecule_discovery_workbench/  # Clean molecule-only product
 │   └── agentic_materials_discovery_workbench/ # Clean materials-only product
 ├── docs/
-│   ├── archive/
-│   ├── split_plan/
-│   └── migration/
+│   └── research-pack.md                     # Full architectural design document
 ├── ARCHIVE_CURRENT_PRODUCT_STATE.md         # Pre-split system description
 ├── SPLIT_STRATEGY.md                        # Why and how the split was done
 ├── EXTRACTED_PRODUCT_BOUNDARIES.md          # Which modules live where
@@ -85,4 +83,4 @@ byte-identical to the original at the preservation tag.
 
 ## License
 
-MIT — Copyright (c) 2026 Waynestark Enterprises Limited
+MIT — Copyright (c) 2026 WayneStark Enterprises Limited
